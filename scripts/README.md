@@ -14,9 +14,8 @@ uv run export-fastsam.py
 
 ## 2. CLIP ViT-B/32 (embedder)
 
-Model weights are fetched automatically by open-clip – no need to download manually.
-
 ```bash
 uv run export-clip.py
+# Note: model weights are fetched automatically
 ```
 

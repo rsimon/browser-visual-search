@@ -1,1 +1,3 @@
 node_modules/
+scripts/models/*.onnx
+scripts/models/*.pt
