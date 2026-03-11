@@ -289,6 +289,7 @@
 <header>
   <h1>browser-visual-search</h1>
   <span class="subtitle">test harness</span>
+  <a href="/assets/search.html" style="margin-left:auto;font-size:10px;color:var(--muted);text-decoration:none;border:1px solid var(--border);padding:3px 10px;border-radius:4px;">search →</a>
   <span class="backend-badge" id="backendBadge">not loaded</span>
   <div class="status-dot" id="statusDot"></div>
 </header>
@@ -583,13 +584,21 @@ btnSegment.addEventListener('click', async () => {
 
   try {
     const t0   = performance.now();
+    let tSeg   = t0;
     const segs = await vs.indexImage({ id, file }, {
-      onSegmentationDone: (n) => log(`Segmentation done — ${n} segments (embedding…)`),
-      onEmbeddingDone:    (n) => log(`Embedding done — ${n} embeddings`),
+      onSegmentationDone: (n) => {
+        const s = ((performance.now() - t0) / 1000).toFixed(1);
+        tSeg = performance.now();
+        log(`Segmentation done — ${n} segments in ${s}s (embedding…)`);
+      },
+      onEmbeddingDone: (n) => {
+        const s = ((performance.now() - tSeg) / 1000).toFixed(1);
+        log(`Embedding done — ${n} vectors in ${s}s`);
+      },
     });
     const ms   = (performance.now() - t0).toFixed(0);
 
-    log(`Done in ${ms}ms — ${segs.length} segments`, 'ok');
+    log(`Done in ${(ms/1000).toFixed(1)}s — ${segs.length} segments`, 'ok');
 
     // Update thumbnail badge
     const badge = document.getElementById(`segcount-${selectedIdx}`);
@@ -690,10 +699,21 @@ btnIndex.addEventListener('click', async () => {
         progressLabel.textContent = `${done} / ${total} — ${name}`;
         document.getElementById(`thumb-${done-1}`)?.classList.add('done');
       },
-      imageProgress: {
-        onSegmentationDone: (n) => log(`  segmentation done — ${n} segments, embedding…`),
-        onEmbeddingDone:    (n) => log(`  embedding done — ${n} vectors`),
-      },
+      imageProgress: (() => {
+        let tBulkSeg = performance.now();
+        return {
+          onSegmentationDone: (n) => {
+            const s = ((performance.now() - tBulkSeg) / 1000).toFixed(1);
+            tBulkSeg = performance.now();
+            log(`  segmentation — ${n} segments in ${s}s, embedding…`);
+          },
+          onEmbeddingDone: (n) => {
+            const s = ((performance.now() - tBulkSeg) / 1000).toFixed(1);
+            tBulkSeg = performance.now();
+            log(`  embedding — ${n} vectors in ${s}s`);
+          },
+        };
+      })(),
     });
 
     // Update seg counts on thumbnails
