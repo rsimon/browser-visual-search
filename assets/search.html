@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>visual-search / search</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0d0d;
+      --surface:  #141414;
+      --border:   #252525;
+      --accent:   #c8f135;
+      --accent2:  #3df5c1;
+      --muted:    #555;
+      --text:     #e8e8e8;
+      --text-dim: #888;
+      --mono:     'JetBrains Mono', monospace;
+      --sans:     'Syne', sans-serif;
+      --radius:   4px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 260px 1fr 320px;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      grid-column: 1 / -1;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header h1 { font-family: var(--sans); font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; }
+    header .subtitle { color: var(--muted); font-size: 11px; }
+    header a { margin-left: auto; font-size: 10px; color: var(--muted); text-decoration: none; border: 1px solid var(--border); padding: 3px 10px; border-radius: var(--radius); }
+    header a:hover { color: var(--accent); border-color: var(--accent); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+    .status-dot.ready { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .status-dot.busy  { background: var(--accent2); animation: pulse 1s ease-in-out infinite; }
+    .status-dot.error { background: #f55; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Left sidebar ── */
+    aside {
+      border-right: 1px solid var(--border);
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .section-label {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    button {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 7px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      width: 100%;
+      text-align: left;
+    }
+    button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    button:disabled { opacity: 0.3; cursor: not-allowed; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; text-align: center; }
+    button.primary:hover:not(:disabled) { background: #d9ff50; }
+    button.accent2 { border-color: var(--accent2); color: var(--accent2); }
+    button.accent2:hover:not(:disabled) { background: rgba(61,245,193,0.06); }
+
+    .config-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+    .config-row label { font-size: 10px; color: var(--muted); }
+    .config-row input {
+      font-family: var(--mono); font-size: 11px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); padding: 5px 8px;
+    }
+    .config-row input:focus { outline: none; border-color: var(--accent2); }
+
+    .index-meta {
+      font-size: 10px;
+      color: var(--text-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .index-meta span { color: var(--accent); }
+
+    hr { border: none; border-top: 1px solid var(--border); }
+
+    /* ── Indexed image thumbnails ── */
+    .indexed-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .idx-thumb {
+      aspect-ratio: 1;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 2px solid transparent;
+      cursor: pointer;
+      background: var(--surface);
+      position: relative;
+    }
+    .idx-thumb:hover { border-color: var(--accent); }
+    .idx-thumb.active { border-color: var(--accent2); }
+    .idx-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .idx-thumb .iname {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      font-size: 8px; color: var(--text-dim);
+      background: rgba(0,0,0,0.75); padding: 2px 3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ── Center: query panel ── */
+    .query-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+    }
+
+    .query-toolbar {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .query-toolbar .hint {
+      font-size: 10px;
+      color: var(--muted);
+      margin-left: auto;
+    }
+    .query-toolbar button { width: auto; }
+
+    .query-canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #000;
+      cursor: crosshair;
+    }
+    #queryImg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+    #cropCanvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+    .query-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px; color: var(--muted);
+    }
+    .query-placeholder .big { font-family: var(--sans); font-size: 14px; color: var(--text-dim); }
+    .query-placeholder .small { font-size: 10px; }
+
+    .query-actions {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .query-actions button { flex: 1; }
+
+    /* crop region info */
+    .crop-info {
+      font-size: 10px;
+      color: var(--text-dim);
+      padding: 4px 16px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      min-height: 24px;
+    }
+
+    /* ── Right: results panel ── */
+    .results-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .results-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .results-header .title { font-size: 11px; color: var(--text-dim); }
+    .results-header .count { font-size: 11px; color: var(--accent); margin-left: auto; }
+
+    .topk-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .topk-row label { font-size: 10px; color: var(--muted); }
+    .topk-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .topk-row span { font-size: 11px; color: var(--accent); width: 24px; }
+
+    .results-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 10px;
+      padding: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .result-card:hover { border-color: var(--accent); }
+    .result-thumb {
+      width: 72px; height: 72px;
+      border-radius: 2px;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .result-thumb canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .result-meta { display: flex; flex-direction: column; gap: 3px; justify-content: center; min-width: 0; }
+    .result-score {
+      font-family: var(--sans);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .result-id { font-size: 10px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .result-bbox { font-size: 9px; color: var(--muted); }
+
+    /* ── Log ── */
+    .log-panel {
+      grid-column: 1 / -1;
+      height: 110px;
+      border-top: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 8px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .log-entry { font-size: 11px; display: grid; grid-template-columns: 72px 52px 1fr; gap: 10px; }
+    .log-time  { color: var(--muted); }
+    .log-level.info  { color: var(--text-dim); }
+    .log-level.ok    { color: var(--accent); }
+    .log-level.warn  { color: #f5a623; }
+    .log-level.error { color: #f55; }
+    .log-msg { color: var(--text); word-break: break-all; }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <h1>browser-visual-search</h1>
+  <span class="subtitle">search</span>
+  <div class="status-dot" id="statusDot"></div>
+  <a href="/assets/test.html">← index harness</a>
+</header>
+
+<!-- ── Left sidebar ── -->
+<aside>
+
+  <section>
+    <div class="section-label">Models</div>
+    <div class="config-row">
+      <label>Segmenter</label>
+      <input id="segmenterUrl" value="/models/fastsam-s.onnx">
+    </div>
+    <div class="config-row">
+      <label>Embedder</label>
+      <input id="embedderUrl" value="/models/clip-vit-b32-visual.onnx">
+    </div>
+    <button id="btnLoad">Load models</button>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="section-label">Index</div>
+    <button id="btnLoadIndex" disabled>Load saved index…</button>
+    <div class="index-meta" id="indexMeta" style="margin-top:8px;display:none">
+      <div>images: <span id="metaImages">—</span></div>
+      <div>segments: <span id="metaSegments">—</span></div>
+      <div>model: <span id="metaModel">—</span></div>
+    </div>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="section-label">Query image</div>
+    <button id="btnPickQuery" disabled>Pick any image…</button>
+  </section>
+
+  <hr>
+
+  <!-- Indexed image shortcuts -->
+  <section>
+    <div class="section-label">Indexed images</div>
+    <div class="indexed-grid" id="indexedGrid">
+      <div style="font-size:10px;color:var(--muted);grid-column:1/-1">Load an index first</div>
+    </div>
+  </section>
+
+</aside>
+
+<!-- ── Center: query ── -->
+<div class="query-panel">
+  <div class="query-toolbar">
+    <span style="font-size:11px;color:var(--text-dim)">Query image</span>
+    <button id="btnClearCrop" style="width:auto;font-size:10px;padding:4px 10px" disabled>Clear crop</button>
+    <span class="hint">Draw a box to crop · click Search to query</span>
+  </div>
+
+  <div class="query-canvas-wrap" id="queryWrap">
+    <img id="queryImg">
+    <canvas id="cropCanvas"></canvas>
+    <div class="query-placeholder" id="queryPlaceholder">
+      <div class="big">No query image</div>
+      <div class="small">Pick an image or click an indexed thumbnail</div>
+    </div>
+  </div>
+
+  <div class="crop-info" id="cropInfo"></div>
+
+  <div class="query-actions">
+    <button id="btnSearchFull"   disabled class="accent2">Search — full image</button>
+    <button id="btnSearchCrop"   disabled class="primary">Search — crop</button>
+  </div>
+</div>
+
+<!-- ── Right: results ── -->
+<div class="results-panel">
+  <div class="results-header">
+    <span class="title">Results</span>
+    <span class="count" id="resultCount">—</span>
+  </div>
+  <div class="topk-row">
+    <label>top-K</label>
+    <input type="range" id="topKSlider" min="5" max="100" value="20" step="5">
+    <span id="topKLabel">20</span>
+  </div>
+  <div class="results-list" id="resultsList">
+    <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:20px">
+      Results will appear here
+    </div>
+  </div>
+</div>
+
+<!-- ── Log ── -->
+<div class="log-panel" id="logPanel"></div>
+
+<script type="module">
+import { loadVisualSearch } from '/src/visual-search.ts';
+import { deserializeIndex } from '/src/index-store.ts';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let vs           = null;
+let index        = null;
+let imageDir     = null;   // FileSystemDirectoryHandle for the indexed image folder
+let queryFile    = null;   // currently loaded query File
+let queryUrl     = null;   // object URL for queryFile
+let crop         = null;   // { x, y, w, h } normalised, or null = full image
+let isDragging   = false;
+let dragStart    = null;
+let indexedFiles = {};     // imageId → object URL (for result thumbnails)
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const statusDot      = document.getElementById('statusDot');
+const btnLoad        = document.getElementById('btnLoad');
+const btnLoadIndex   = document.getElementById('btnLoadIndex');
+const btnPickQuery   = document.getElementById('btnPickQuery');
+const btnClearCrop   = document.getElementById('btnClearCrop');
+const btnSearchFull  = document.getElementById('btnSearchFull');
+const btnSearchCrop  = document.getElementById('btnSearchCrop');
+const queryImg       = document.getElementById('queryImg');
+const queryWrap      = document.getElementById('queryWrap');
+const cropCanvas     = document.getElementById('cropCanvas');
+const queryPlaceholder = document.getElementById('queryPlaceholder');
+const cropInfo       = document.getElementById('cropInfo');
+const indexedGrid    = document.getElementById('indexedGrid');
+const resultsList    = document.getElementById('resultsList');
+const resultCount    = document.getElementById('resultCount');
+const topKSlider     = document.getElementById('topKSlider');
+const topKLabel      = document.getElementById('topKLabel');
+const logPanel       = document.getElementById('logPanel');
+
+// ── Log ───────────────────────────────────────────────────────────────────────
+function log(msg, level = 'info') {
+  const time  = new Date().toTimeString().slice(0, 8);
+  const el    = document.createElement('div');
+  el.className = 'log-entry';
+  el.innerHTML = `<span class="log-time">${time}</span><span class="log-level ${level}">${level}</span><span class="log-msg">${msg}</span>`;
+  logPanel.appendChild(el);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+function setStatus(s) { statusDot.className = 'status-dot ' + s; }
+function setBusy(b)   { setStatus(b ? 'busy' : 'ready'); }
+
+// ── topK slider ───────────────────────────────────────────────────────────────
+topKSlider.addEventListener('input', () => { topKLabel.textContent = topKSlider.value; });
+
+// ── Load models ───────────────────────────────────────────────────────────────
+btnLoad.addEventListener('click', async () => {
+  btnLoad.disabled = true;
+  setBusy(true);
+  const segUrl = document.getElementById('segmenterUrl').value.trim();
+  const embUrl = document.getElementById('embedderUrl').value.trim();
+  log(`Loading models…`);
+  try {
+    vs = await loadVisualSearch({ segmenterUrl: segUrl, embedderUrl: embUrl, executionProviders: ['webgpu', 'wasm'] });
+    log('Models ready', 'ok');
+    setStatus('ready');
+    btnLoadIndex.disabled  = false;
+    btnPickQuery.disabled  = false;
+  } catch (err) {
+    log(`Failed: ${err.message}`, 'error');
+    setStatus('error');
+    btnLoad.disabled = false;
+  }
+});
+
+// ── Load index ────────────────────────────────────────────────────────────────
+btnLoadIndex.addEventListener('click', async () => {
+  try {
+    // User picks the folder that CONTAINS the .visual-search directory
+    // (same folder they picked when saving in test.html)
+    const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+    log(`Loading index from "${dirHandle.name}"…`);
+    setBusy(true);
+
+    index    = await deserializeIndex(dirHandle);
+    imageDir = dirHandle;
+
+    const totalSegs = index.images.reduce((n, img) => n + img.segments.length, 0);
+    log(`Index loaded — ${index.images.length} images, ${totalSegs} segments`, 'ok');
+
+    document.getElementById('metaImages').textContent   = index.images.length;
+    document.getElementById('metaSegments').textContent = totalSegs;
+    document.getElementById('metaModel').textContent    = '—';
+    document.getElementById('indexMeta').style.display  = 'flex';
+    document.getElementById('indexMeta').style.flexDirection = 'column';
+    document.getElementById('indexMeta').style.gap = '3px';
+
+    // Build thumbnail grid from indexed images
+    await buildIndexedGrid();
+    setBusy(false);
+  } catch (err) {
+    log(`Failed to load index: ${err.message}`, 'error');
+    setBusy(false);
+  }
+});
+
+async function buildIndexedGrid() {
+  indexedGrid.innerHTML = '';
+  // Revoke old URLs
+  Object.values(indexedFiles).forEach(u => URL.revokeObjectURL(u));
+  indexedFiles = {};
+
+  for (const img of index.images) {
+    let url = null;
+    try {
+      const fh   = await imageDir.getFileHandle(img.imageId);
+      const file = await fh.getFile();
+      url = URL.createObjectURL(file);
+      indexedFiles[img.imageId] = url;
+    } catch {
+      // File not found in this dir — skip thumbnail but keep entry
+    }
+
+    const item = document.createElement('div');
+    item.className = 'idx-thumb';
+    item.title = img.imageId;
+    if (url) {
+      item.innerHTML = `<img src="${url}" loading="lazy"><span class="iname">${img.imageId}</span>`;
+      item.addEventListener('click', () => setQueryFromUrl(url, img.imageId));
+    } else {
+      item.innerHTML = `<span class="iname" style="color:var(--muted);font-size:9px;position:absolute;top:4px;left:4px;">${img.imageId}</span>`;
+      item.style.opacity = '0.4';
+    }
+    indexedGrid.appendChild(item);
+  }
+}
+
+// ── Pick query image ──────────────────────────────────────────────────────────
+btnPickQuery.addEventListener('click', async () => {
+  const input = document.createElement('input');
+  input.type   = 'file';
+  input.accept = 'image/*';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    await setQueryFromUrl(url, file.name);
+    queryFile = file;
+  };
+  input.click();
+});
+
+async function setQueryFromUrl(url, name) {
+  if (queryUrl && queryUrl !== url) URL.revokeObjectURL(queryUrl);
+  queryUrl  = url;
+  queryFile = null;
+  crop      = null;
+
+  queryImg.src     = url;
+  queryImg.style.display = 'block';
+  queryPlaceholder.style.display = 'none';
+
+  // Try to get actual File from imageDir if it's an indexed image
+  if (imageDir) {
+    try {
+      const fh = await imageDir.getFileHandle(name);
+      queryFile = await fh.getFile();
+    } catch { /* not in indexed dir, will use blob url */ }
+  }
+
+  // If still no File, create one from the blob URL
+  if (!queryFile) {
+    const res  = await fetch(url);
+    const blob = await res.blob();
+    queryFile  = new File([blob], name, { type: blob.type });
+  }
+
+  clearCropDraw();
+  updateSearchButtons();
+  log(`Query image: ${name}`);
+
+  // Highlight in indexed grid
+  document.querySelectorAll('.idx-thumb').forEach(el => {
+    el.classList.toggle('active', el.title === name);
+  });
+}
+
+// ── Crop drawing ──────────────────────────────────────────────────────────────
+const ctx = cropCanvas.getContext('2d');
+
+function getImageRect() {
+  // object-fit: contain layout
+  const cW = queryWrap.offsetWidth;
+  const cH = queryWrap.offsetHeight;
+  if (!queryImg.naturalWidth) return { offX: 0, offY: 0, imgW: cW, imgH: cH };
+  const scale = Math.min(cW / queryImg.naturalWidth, cH / queryImg.naturalHeight);
+  const imgW  = queryImg.naturalWidth  * scale;
+  const imgH  = queryImg.naturalHeight * scale;
+  return { offX: (cW - imgW) / 2, offY: (cH - imgH) / 2, imgW, imgH };
+}
+
+function canvasToNorm(px, py) {
+  const { offX, offY, imgW, imgH } = getImageRect();
+  return {
+    x: Math.max(0, Math.min(1, (px - offX) / imgW)),
+    y: Math.max(0, Math.min(1, (py - offY) / imgH)),
+  };
+}
+
+function resizeCanvas() {
+  cropCanvas.width  = queryWrap.offsetWidth;
+  cropCanvas.height = queryWrap.offsetHeight;
+  redrawCrop();
+}
+
+function redrawCrop() {
+  const W = cropCanvas.width;
+  const H = cropCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!crop) return;
+
+  const { offX, offY, imgW, imgH } = getImageRect();
+  const rx = offX + crop.x * imgW;
+  const ry = offY + crop.y * imgH;
+  const rw = crop.w * imgW;
+  const rh = crop.h * imgH;
+
+  // Dim outside crop
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.clearRect(rx, ry, rw, rh);
+
+  // Crop border
+  ctx.strokeStyle = '#c8f135';
+  ctx.lineWidth   = 1.5;
+  ctx.strokeRect(rx, ry, rw, rh);
+
+  // Corner handles
+  const hs = 6;
+  ctx.fillStyle = '#c8f135';
+  [[rx,ry],[rx+rw,ry],[rx,ry+rh],[rx+rw,ry+rh]].forEach(([x,y]) => {
+    ctx.fillRect(x - hs/2, y - hs/2, hs, hs);
+  });
+}
+
+function getEventPos(e) {
+  const rect = cropCanvas.getBoundingClientRect();
+  const src  = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+}
+
+cropCanvas.addEventListener('mousedown', e => {
+  if (!queryImg.src) return;
+  isDragging = true;
+  dragStart  = getEventPos(e);
+  crop       = null;
+  redrawCrop();
+});
+
+cropCanvas.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const pos  = getEventPos(e);
+  const a    = canvasToNorm(dragStart.x, dragStart.y);
+  const b    = canvasToNorm(pos.x, pos.y);
+  const x    = Math.min(a.x, b.x);
+  const y    = Math.min(a.y, b.y);
+  const w    = Math.abs(a.x - b.x);
+  const h    = Math.abs(a.y - b.y);
+  if (w > 0.01 && h > 0.01) crop = { x, y, w, h };
+  redrawCrop();
+});
+
+cropCanvas.addEventListener('mouseup', () => {
+  isDragging = false;
+  if (crop) {
+    cropInfo.textContent = `crop: [${crop.x.toFixed(3)}, ${crop.y.toFixed(3)}, ${crop.w.toFixed(3)}, ${crop.h.toFixed(3)}]`;
+    btnClearCrop.disabled    = false;
+    btnSearchCrop.disabled   = false;
+  }
+});
+
+btnClearCrop.addEventListener('click', () => {
+  clearCropDraw();
+});
+
+function clearCropDraw() {
+  crop = null;
+  redrawCrop();
+  cropInfo.textContent      = '';
+  btnClearCrop.disabled     = true;
+  btnSearchCrop.disabled    = true;
+}
+
+function updateSearchButtons() {
+  const ready = !!(vs && index && queryFile);
+  btnSearchFull.disabled = !ready;
+  btnSearchCrop.disabled = !(ready && crop);
+}
+
+window.addEventListener('resize', resizeCanvas);
+new ResizeObserver(resizeCanvas).observe(queryWrap);
+
+// ── Search ────────────────────────────────────────────────────────────────────
+btnSearchFull.addEventListener('click', () => runSearch(null));
+btnSearchCrop.addEventListener('click', () => runSearch(crop ? [crop.x, crop.y, crop.w, crop.h] : null));
+
+async function runSearch(bbox) {
+  if (!vs || !index || !queryFile) return;
+  setBusy(true);
+  const topK   = parseInt(topKSlider.value);
+  const region = bbox ? `crop [${bbox.map(v=>v.toFixed(2)).join(', ')}]` : 'full image';
+  log(`Searching — ${region}, top-${topK}…`);
+
+  try {
+    const t0      = performance.now();
+    const results = await vs.search(queryFile, bbox ?? undefined, index, { topK });
+    const ms      = (performance.now() - t0).toFixed(0);
+    log(`Done in ${ms}ms — ${results.length} results`, 'ok');
+    renderResults(results);
+  } catch (err) {
+    log(`Search failed: ${err.message}`, 'error');
+    console.error(err);
+  }
+
+  setBusy(false);
+}
+
+// ── Render results ────────────────────────────────────────────────────────────
+function renderResults(results) {
+  resultCount.textContent = `${results.length} results`;
+  resultsList.innerHTML   = '';
+
+  results.forEach((r, i) => {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+
+    // Thumbnail with bbox overlay
+    const thumbUrl = indexedFiles[r.imageId] ?? null;
+    const thumbId  = `rthumb-${i}`;
+
+    card.innerHTML = `
+      <div class="result-thumb" id="${thumbId}">
+        ${thumbUrl ? `<img src="${thumbUrl}" style="display:none">` : ''}
+        <canvas></canvas>
+      </div>
+      <div class="result-meta">
+        <div class="result-score">${(r.score * 100).toFixed(1)}<span style="font-size:11px;color:var(--muted)">%</span></div>
+        <div class="result-id">${r.imageId}</div>
+        <div class="result-bbox">[${r.bbox.map(v=>v.toFixed(2)).join(', ')}] &nbsp; area ${(r.area*100).toFixed(1)}%</div>
+      </div>`;
+
+    resultsList.appendChild(card);
+
+    // Draw bbox on thumbnail canvas after image loads
+    const thumb  = card.querySelector('.result-thumb');
+    const canvas = card.querySelector('canvas');
+    const img    = card.querySelector('img');
+
+    function drawCrop() {
+      const W = thumb.offsetWidth  || 72;
+      const H = thumb.offsetHeight || 72;
+      canvas.width  = W;
+      canvas.height = H;
+      const c = canvas.getContext('2d');
+
+      if (img && img.naturalWidth) {
+        const [x, y, w, h] = r.bbox;
+        const srcX = x * img.naturalWidth;
+        const srcY = y * img.naturalHeight;
+        const srcW = w * img.naturalWidth;
+        const srcH = h * img.naturalHeight;
+        // Draw just the segment crop, scaled to fill the thumbnail
+        c.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, W, H);
+      } else {
+        c.fillStyle = '#1a1a1a';
+        c.fillRect(0, 0, W, H);
+      }
+    }
+
+    if (img) {
+      img.complete ? drawCrop() : img.addEventListener('load', drawCrop);
+    } else {
+      drawCrop();
+    }
+  });
+}
+
+log('Ready. Load models and an index to begin.');
+</script>
+</body>
+</html>

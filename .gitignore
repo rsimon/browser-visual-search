@@ -1,4 +1,5 @@
 node_modules/
+.visual-search/
 assets/models/*.onnx
 scripts/models/*.pt
 .DS_Store
