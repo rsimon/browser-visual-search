@@ -61,11 +61,14 @@ torch.onnx.export(
     visual,
     dummy,
     str(OUTPUT_PATH),
-    dynamo=False,          # use legacy TorchScript-based exporter
+    dynamo=False,
     opset_version=OPSET,
     input_names=["image"],
     output_names=["output"],
-    dynamic_axes=None,     # static batch=1; ORT Web prefers static shapes
+    dynamic_axes={
+        "image":  {0: "batch"},
+        "output": {0: "batch"},
+    },
 )
 
 size_mb = OUTPUT_PATH.stat().st_size / 1e6

@@ -25,10 +25,10 @@ import { decodeDetections } from './postprocess.js';
 import { createIndexBuilder, deserializeIndex, MODEL_LABEL } from './index-store.js';
 import { nearestNeighbours } from './search.js';
 
-import type { BBox, BuildIndexOptions, ImageInput, LoadOptions, SearchOptions, SearchResult, Segment } from './types.js';
+import type { BBox, BuildIndexOptions, IndexImageOptions, ImageInput, LoadOptions, SearchOptions, SearchResult, Segment } from './types.js';
 import type { VisualSearchIndex } from './index-store.js';
 
-export type { BBox, BuildIndexOptions, ImageInput, LoadOptions, SearchOptions, SearchResult, Segment, VisualSearchIndex };
+export type { BBox, BuildIndexOptions, IndexImageOptions, ImageInput, LoadOptions, SearchOptions, SearchResult, Segment, VisualSearchIndex };
 export { deserializeIndex };
 
 const EMBEDDING_DIM = 512;
@@ -94,7 +94,7 @@ export interface VisualSearch {
    * Segment an image and embed each segment.
    * Analogous to POST /index-image on the server.
    */
-  indexImage(input: ImageInput): Promise<Segment[]>;
+  indexImage(input: ImageInput, progress?: IndexImageOptions): Promise<Segment[]>;
 
   /**
    * Embed a single image region (or the whole image if bbox is omitted).
@@ -145,6 +145,14 @@ export async function loadVisualSearch(options: LoadOptions): Promise<VisualSear
     const output0 = output[segmenter.outputNames[0]];
     const output1 = output[segmenter.outputNames[1]];
 
+    console.log('output0 shape:', output0.dims);
+    console.log('output names:', segmenter.outputNames);
+    // Sample first anchor's values
+    const d = output0.data as Float32Array;
+    const N = d.length / 37;
+    console.log('anchors:', N);
+    console.log('first anchor cx,cy,w,h,conf:', d[0], d[N], d[2*N], d[3*N], d[4*N]);
+
     return decodeDetections(
       output0.data as Float32Array,
       output1.data as Float32Array,
@@ -153,7 +161,7 @@ export async function loadVisualSearch(options: LoadOptions): Promise<VisualSear
     );
   }
 
-  // ── Internal: run CLIP embedder on a single crop ───────────────────────────
+  // ── Internal: embed a single crop ────────────────────────────────────────────
 
   async function embedBitmap(bitmap: ImageBitmap, bbox: BBox | null): Promise<Float32Array> {
     const tensor = cropToClipTensor(bitmap, bbox);
@@ -161,21 +169,62 @@ export async function loadVisualSearch(options: LoadOptions): Promise<VisualSear
     const feeds = { [embedder.inputNames[0]]: inputTensor };
     const output = await embedder.run(feeds);
     const raw = output[embedder.outputNames[0]].data as Float32Array;
-    // Return a copy (the ORT buffer may be reused)
     return l2Normalise(new Float32Array(raw));
+  }
+
+  // ── Internal: embed multiple crops in batches ─────────────────────────────
+
+  async function embedBitmapBatch(
+    bitmap: ImageBitmap,
+    bboxes: Array<BBox | null>,
+    batchSize = 32,
+  ): Promise<Float32Array[]> {
+    const results: Float32Array[] = [];
+
+    for (let i = 0; i < bboxes.length; i += batchSize) {
+      const batchBBoxes = bboxes.slice(i, i + batchSize);
+      const tensors = batchBBoxes.map(bbox => cropToClipTensor(bitmap, bbox));
+
+      // Stack into a single [B, 3, 224, 224] tensor
+      const B = tensors.length;
+      const flat = new Float32Array(B * 3 * CLIP_INPUT_SIZE * CLIP_INPUT_SIZE);
+      tensors.forEach((t, j) => flat.set(t, j * t.length));
+
+      const inputTensor = new ort.Tensor('float32', flat, [B, 3, CLIP_INPUT_SIZE, CLIP_INPUT_SIZE]);
+      const feeds = { [embedder.inputNames[0]]: inputTensor };
+      const output = await embedder.run(feeds);
+      const raw = output[embedder.outputNames[0]].data as Float32Array;
+
+      // Split [B, 512] output back into individual vectors
+      for (let j = 0; j < B; j++) {
+        const vec = new Float32Array(EMBEDDING_DIM);
+        for (let k = 0; k < EMBEDDING_DIM; k++) {
+          vec[k] = raw[j * EMBEDDING_DIM + k];
+        }
+        results.push(l2Normalise(vec));
+      }
+    }
+
+    return results;
   }
 
   // ── Public methods ─────────────────────────────────────────────────────────
 
-  async function indexImage(input: ImageInput): Promise<Segment[]> {
-    const bitmap = await fileToImageBitmap(input.file);
+  async function indexImage(input: ImageInput, progress?: IndexImageOptions): Promise<Segment[]> {
+    const bitmap     = await fileToImageBitmap(input.file);
     const detections = await segmentBitmap(bitmap);
 
-    const segments: Segment[] = [];
-    for (const det of detections) {
-      const embedding = await embedBitmap(bitmap, det.bbox);
-      segments.push({ bbox: det.bbox, area: det.area, embedding });
-    }
+    progress?.onSegmentationDone?.(detections.length);
+
+    const embeddings = await embedBitmapBatch(bitmap, detections.map(d => d.bbox));
+
+    progress?.onEmbeddingDone?.(detections.length);
+
+    const segments: Segment[] = detections.map((det, i) => ({
+      bbox:      det.bbox,
+      area:      det.area,
+      embedding: embeddings[i],
+    }));
 
     bitmap.close();
     return segments;
@@ -193,11 +242,11 @@ export async function loadVisualSearch(options: LoadOptions): Promise<VisualSear
     options: BuildIndexOptions = {},
   ): Promise<VisualSearchIndex> {
     const builder = createIndexBuilder();
-    const { onProgress } = options;
+    const { onProgress, imageProgress } = options;
 
     for (let i = 0; i < inputs.length; i++) {
       const input = inputs[i];
-      const segments = await indexImage(input);
+      const segments = await indexImage(input, imageProgress);
       builder.addImage(input.id, segments);
       onProgress?.(i + 1, inputs.length);
     }

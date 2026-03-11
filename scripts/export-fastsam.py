@@ -28,6 +28,7 @@ from ultralytics import FastSAM
 
 MODELS_DIR = Path("models")
 ASSETS_DIR = Path("../assets/models")
+MODELS_DIR.mkdir(exist_ok=True)
 
 INPUT_MODEL  = MODELS_DIR / "FastSAM-s.pt"
 OUTPUT_MODEL = ASSETS_DIR / "fastsam-s.onnx"
@@ -42,6 +43,7 @@ model.export(
     opset=12,
     simplify=False,
     dynamic=False,
+    max_det=1500,
 )
 
 # Ultralytics saves alongside the .pt file — move to our preferred path

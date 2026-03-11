@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>visual-search / test harness</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0d0d;
+      --surface:  #141414;
+      --border:   #252525;
+      --accent:   #c8f135;
+      --accent2:  #3df5c1;
+      --muted:    #555;
+      --text:     #e8e8e8;
+      --text-dim: #888;
+      --mono:     'JetBrains Mono', monospace;
+      --sans:     'Syne', sans-serif;
+      --radius:   4px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      grid-column: 1 / -1;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header h1 { font-family: var(--sans); font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; }
+    header .subtitle { color: var(--muted); font-size: 11px; }
+    .backend-badge {
+      margin-left: auto;
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+    .backend-badge.webgpu { border-color: var(--accent2); color: var(--accent2); }
+    .backend-badge.wasm   { border-color: #f5a623; color: #f5a623; }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted); transition: background 0.3s;
+    }
+    .status-dot.ready { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .status-dot.busy  { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); animation: pulse 1s ease-in-out infinite; }
+    .status-dot.error { background: #f55; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Sidebar ── */
+    aside {
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-top {
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .section-label {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* ── Buttons ── */
+    button {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 7px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    button:disabled { opacity: 0.3; cursor: not-allowed; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+    button.primary:hover:not(:disabled) { background: #d9ff50; }
+    button.accent2 { border-color: var(--accent2); color: var(--accent2); }
+    button.accent2:hover:not(:disabled) { background: rgba(61,245,193,0.08); }
+
+    .btn-row { display: flex; gap: 6px; }
+    .btn-row button { flex: 1; }
+
+    /* ── Config ── */
+    .config-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+    .config-row label { font-size: 10px; color: var(--muted); }
+    .config-row input {
+      font-family: var(--mono); font-size: 11px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); padding: 5px 8px;
+    }
+    .config-row input:focus { outline: none; border-color: var(--accent2); }
+
+    /* ── Progress ── */
+    .progress-track { height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; margin-top: 8px; }
+    .progress-fill  { height: 100%; background: var(--accent); width: 0%; transition: width 0.2s; }
+    .progress-label { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+
+    /* ── Stats ── */
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat  { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+    .stat-value { font-family: var(--sans); font-size: 20px; font-weight: 700; color: var(--accent); line-height: 1; }
+    .stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Thumbnail grid ── */
+    .thumb-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    .thumb-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .thumb-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      background: var(--surface);
+    }
+    .thumb-item:hover { border-color: var(--accent); }
+    .thumb-item.selected { border-color: var(--accent2); }
+    .thumb-item.done::after {
+      content: '✓';
+      position: absolute; top: 3px; right: 4px;
+      font-size: 10px; color: var(--accent);
+      text-shadow: 0 0 4px #000;
+    }
+    .thumb-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb-item .thumb-name {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      font-size: 9px; color: var(--text-dim);
+      background: rgba(0,0,0,0.7);
+      padding: 2px 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .thumb-seg-count {
+      position: absolute; top: 3px; left: 4px;
+      font-size: 9px; color: var(--accent2);
+      text-shadow: 0 0 4px #000;
+    }
+
+    /* ── Main panel ── */
+    main {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      overflow: hidden;
+    }
+
+    /* ── Detail panel ── */
+    .detail-panel {
+      display: grid;
+      grid-template-columns: 3fr 1fr;
+      overflow: hidden;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .detail-image {
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow: hidden;
+    }
+    .detail-image .img-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius);
+      background: var(--surface);
+      min-height: 0;
+    }
+    .detail-image img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .detail-image .no-selection {
+      width: 100%; height: 100%; min-height: 160px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 11px;
+    }
+    .detail-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+
+    /* Segment overlay canvas */
+    #segCanvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+
+    .detail-results {
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .result-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+    }
+    .result-block pre {
+      font-size: 10px;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .result-title { font-size: 10px; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+    /* ── Log ── */
+    .log-panel {
+      height: 140px;
+      overflow-y: auto;
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .log-entry {
+      font-size: 11px;
+      display: grid;
+      grid-template-columns: 72px 52px 1fr;
+      gap: 10px;
+    }
+    .log-time  { color: var(--muted); }
+    .log-level.info  { color: var(--text-dim); }
+    .log-level.ok    { color: var(--accent); }
+    .log-level.warn  { color: #f5a623; }
+    .log-level.error { color: #f55; }
+    .log-msg { color: var(--text); word-break: break-all; }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    hr { border: none; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>browser-visual-search</h1>
+  <span class="subtitle">test harness</span>
+  <span class="backend-badge" id="backendBadge">not loaded</span>
+  <div class="status-dot" id="statusDot"></div>
+</header>
+
+<!-- ── Sidebar ── -->
+<aside>
+  <div class="sidebar-top">
+
+    <!-- Models -->
+    <section>
+      <div class="section-label">Models</div>
+      <div class="config-row">
+        <label>Segmenter</label>
+        <input id="segmenterUrl" value="/models/fastsam-s.onnx">
+      </div>
+      <div class="config-row">
+        <label>Embedder</label>
+        <input id="embedderUrl" value="/models/clip-vit-b32-visual.onnx">
+      </div>
+      <button id="btnLoad">Load models</button>
+    </section>
+
+    <hr>
+
+    <!-- Images -->
+    <section>
+      <div class="section-label">Images</div>
+      <button id="btnPickImages" disabled>Pick folder…</button>
+    </section>
+
+    <hr>
+
+    <!-- Bulk indexing -->
+    <section>
+      <div class="section-label">Bulk index</div>
+      <div class="btn-row">
+        <button id="btnIndex" disabled class="primary">Index all</button>
+        <button id="btnSave"  disabled>Save…</button>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">—</div>
+    </section>
+
+    <hr>
+
+    <!-- Stats -->
+    <section>
+      <div class="section-label">Stats</div>
+      <div class="stats">
+        <div class="stat"><div class="stat-value" id="statImages">—</div><div class="stat-label">images</div></div>
+        <div class="stat"><div class="stat-value" id="statSegments">—</div><div class="stat-label">segments</div></div>
+        <div class="stat"><div class="stat-value" id="statTime">—</div><div class="stat-label">seconds</div></div>
+        <div class="stat"><div class="stat-value" id="statAvg">—</div><div class="stat-label">seg/img</div></div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Thumbnail grid -->
+  <div class="thumb-area">
+    <div class="thumb-grid" id="thumbGrid"></div>
+  </div>
+</aside>
+
+<!-- ── Main ── -->
+<main>
+  <div class="detail-panel">
+
+    <!-- Selected image + per-image controls -->
+    <div class="detail-image">
+      <div class="section-label" id="selectedName">No image selected</div>
+      <div class="img-wrap" id="imgWrap">
+        <div class="no-selection">← pick an image from the sidebar</div>
+        <canvas id="segCanvas" style="display:none"></canvas>
+      </div>
+      <div class="detail-actions">
+        <div class="btn-row">
+          <button id="btnEmbed"   disabled class="accent2">Embed (full image)</button>
+          <button id="btnSegment" disabled class="accent2">Segment + embed</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results for selected image -->
+    <div class="detail-results" id="detailResults">
+      <div style="color:var(--muted);font-size:11px;margin-top:20px;text-align:center">
+        Results will appear here
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Log -->
+  <div class="log-panel" id="logPanel"></div>
+</main>
+
+<script type="module">
+import { loadVisualSearch } from '/src/visual-search.ts';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let vs            = null;
+let files         = [];   // { id, file, url }[]
+let index         = null;
+let selectedIdx   = -1;
+let activeBackend = 'unknown';
+
+// ── DOM ──────────────────────────────────────────────────────────────────────
+const statusDot    = document.getElementById('statusDot');
+const backendBadge = document.getElementById('backendBadge');
+const btnLoad      = document.getElementById('btnLoad');
+const btnPickImages= document.getElementById('btnPickImages');
+const btnIndex     = document.getElementById('btnIndex');
+const btnSave      = document.getElementById('btnSave');
+const btnEmbed     = document.getElementById('btnEmbed');
+const btnSegment   = document.getElementById('btnSegment');
+const thumbGrid    = document.getElementById('thumbGrid');
+const progressFill = document.getElementById('progressFill');
+const progressLabel= document.getElementById('progressLabel');
+const logPanel     = document.getElementById('logPanel');
+const imgWrap      = document.getElementById('imgWrap');
+const segCanvas    = document.getElementById('segCanvas');
+const selectedName = document.getElementById('selectedName');
+const detailResults= document.getElementById('detailResults');
+const statImages   = document.getElementById('statImages');
+const statSegments = document.getElementById('statSegments');
+const statTime     = document.getElementById('statTime');
+const statAvg      = document.getElementById('statAvg');
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+function log(msg, level = 'info') {
+  const time  = new Date().toTimeString().slice(0, 8);
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${time}</span><span class="log-level ${level}">${level}</span><span class="log-msg">${msg}</span>`;
+  logPanel.appendChild(entry);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+function setStatus(s) { statusDot.className = 'status-dot ' + s; }
+function setBusy(b)   { setStatus(b ? 'busy' : 'ready'); }
+
+// ── Detect which ORT backend actually ran ────────────────────────────────────
+// We probe by checking env after a tiny inference — ORT sets env.wasm.numThreads
+// and similar. The cleanest signal is just trying webgpu first.
+async function detectBackend() {
+  // We'll update this after model load based on what succeeded
+  return activeBackend;
+}
+
+// ── Load models ──────────────────────────────────────────────────────────────
+btnLoad.addEventListener('click', async () => {
+  const segUrl = document.getElementById('segmenterUrl').value.trim();
+  const embUrl = document.getElementById('embedderUrl').value.trim();
+
+  btnLoad.disabled = true;
+  setBusy(true);
+  log(`Loading segmenter: ${segUrl}`);
+  log(`Loading embedder:  ${embUrl}`);
+
+  // Try WebGPU first, fall back to WASM
+  const providerSets = [['webgpu', 'wasm'], ['wasm']];
+
+  for (const providers of providerSets) {
+    try {
+      vs = await loadVisualSearch({ segmenterUrl: segUrl, embedderUrl: embUrl, executionProviders: providers });
+      activeBackend = providers[0] === 'webgpu' ? 'webgpu' : 'wasm';
+      backendBadge.textContent = activeBackend.toUpperCase();
+      backendBadge.className   = `backend-badge ${activeBackend}`;
+      log(`Models loaded — backend: ${activeBackend}`, 'ok');
+      setStatus('ready');
+      btnPickImages.disabled = false;
+      break;
+    } catch (err) {
+      if (providers[0] === 'webgpu') {
+        log(`WebGPU unavailable, falling back to WASM`, 'warn');
+      } else {
+        log(`Failed to load models: ${err.message}`, 'error');
+        setStatus('error');
+        btnLoad.disabled = false;
+      }
+    }
+  }
+});
+
+// ── Pick images ──────────────────────────────────────────────────────────────
+btnPickImages.addEventListener('click', async () => {
+  try {
+    const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+    // Revoke old object URLs
+    files.forEach(f => URL.revokeObjectURL(f.url));
+    files = [];
+    thumbGrid.innerHTML = '';
+
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (handle.kind !== 'file') continue;
+      if (!/\.(jpe?g|png|webp|avif)$/i.test(name)) continue;
+      const file = await handle.getFile();
+      const url  = URL.createObjectURL(file);
+      const idx  = files.length;
+      files.push({ id: name, file, url });
+
+      // Thumbnail
+      const item = document.createElement('div');
+      item.className = 'thumb-item';
+      item.id = `thumb-${idx}`;
+      item.innerHTML = `
+        <img src="${url}" loading="lazy">
+        <span class="thumb-name">${name}</span>
+        <span class="thumb-seg-count" id="segcount-${idx}"></span>`;
+      item.addEventListener('click', () => selectImage(idx));
+      thumbGrid.appendChild(item);
+    }
+
+    log(`Loaded ${files.length} image(s)`, 'ok');
+    if (files.length > 0) {
+      btnIndex.disabled = false;
+      selectImage(0);
+    }
+    progressLabel.textContent = `${files.length} images`;
+  } catch (err) {
+    if (err.name !== 'AbortError') log(`Folder pick failed: ${err.message}`, 'error');
+  }
+});
+
+// ── Select image ─────────────────────────────────────────────────────────────
+function selectImage(idx) {
+  // Deselect previous
+  if (selectedIdx >= 0) {
+    document.getElementById(`thumb-${selectedIdx}`)?.classList.remove('selected');
+  }
+  selectedIdx = idx;
+  document.getElementById(`thumb-${idx}`)?.classList.add('selected');
+
+  const { id, url } = files[idx];
+  selectedName.textContent = id;
+
+  // Show image in detail panel
+  imgWrap.innerHTML = `<img id="detailImg" src="${url}" style="width:100%;height:100%;object-fit:contain">
+                       <canvas id="segCanvas" style="display:none;position:absolute;inset:0;width:100%;height:100%"></canvas>`;
+  detailResults.innerHTML = '<div style="color:var(--muted);font-size:11px;margin-top:20px;text-align:center">Run embed or segment to see results</div>';
+
+  btnEmbed.disabled   = false;
+  btnSegment.disabled = false;
+}
+
+// ── Embed full image ──────────────────────────────────────────────────────────
+btnEmbed.addEventListener('click', async () => {
+  if (selectedIdx < 0 || !vs) return;
+  const { id, file } = files[selectedIdx];
+  setBusy(true);
+  btnEmbed.disabled = true;
+  log(`Embedding: ${id}`);
+
+  try {
+    const t0  = performance.now();
+    const emb = await vs.embedRegion(file);
+    const ms  = (performance.now() - t0).toFixed(0);
+
+    log(`Embedded in ${ms}ms — dim: ${emb.length}`, 'ok');
+    showEmbeddingResult(emb, ms);
+  } catch (err) {
+    log(`Embed failed: ${err.message}`, 'error');
+    console.error(err);
+  }
+
+  btnEmbed.disabled = false;
+  setBusy(false);
+});
+
+function showEmbeddingResult(emb, ms) {
+  // Show first 16 values + norm
+  const norm = Math.sqrt(emb.reduce((s,v) => s + v*v, 0));
+  const preview = Array.from(emb.slice(0, 16)).map(v => v.toFixed(4)).join(', ') + ', …';
+  detailResults.innerHTML = `
+    <div class="result-block">
+      <div class="result-title">Embedding — ${ms}ms</div>
+      <div style="font-size:11px;margin-bottom:6px">
+        <span style="color:var(--accent2)">dim</span> ${emb.length} &nbsp;
+        <span style="color:var(--accent2)">norm</span> ${norm.toFixed(6)}
+      </div>
+      <pre>${preview}</pre>
+    </div>`;
+}
+
+// ── Segment + embed ───────────────────────────────────────────────────────────
+btnSegment.addEventListener('click', async () => {
+  if (selectedIdx < 0 || !vs) return;
+  const { id, file } = files[selectedIdx];
+  setBusy(true);
+  btnSegment.disabled = true;
+  log(`Segmenting: ${id}`);
+
+  try {
+    const t0   = performance.now();
+    const segs = await vs.indexImage({ id, file }, {
+      onSegmentationDone: (n) => log(`Segmentation done — ${n} segments (embedding…)`),
+      onEmbeddingDone:    (n) => log(`Embedding done — ${n} embeddings`),
+    });
+    const ms   = (performance.now() - t0).toFixed(0);
+
+    log(`Done in ${ms}ms — ${segs.length} segments`, 'ok');
+
+    // Update thumbnail badge
+    const badge = document.getElementById(`segcount-${selectedIdx}`);
+    if (badge) badge.textContent = segs.length;
+    document.getElementById(`thumb-${selectedIdx}`)?.classList.add('done');
+
+    showSegmentResults(segs, ms);
+    drawSegments(segs);
+  } catch (err) {
+    log(`Segmentation failed: ${err.message}`, 'error');
+    console.error(err);
+  }
+
+  btnSegment.disabled = false;
+  setBusy(false);
+});
+
+function showSegmentResults(segs, ms) {
+  const rows = segs.slice(0, 8).map((s, i) => {
+    const [x,y,w,h] = s.bbox.map(v => v.toFixed(3));
+    const norm = Math.sqrt(s.embedding.reduce((a,v) => a+v*v, 0));
+    return `<div style="display:grid;grid-template-columns:20px 1fr 60px 60px;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px">
+      <span style="color:var(--muted)">${i}</span>
+      <span style="color:var(--text-dim)">[${x}, ${y}, ${w}, ${h}]</span>
+      <span>area <span style="color:var(--accent)">${(s.area*100).toFixed(1)}%</span></span>
+      <span>‖emb‖ <span style="color:var(--accent2)">${norm.toFixed(3)}</span></span>
+    </div>`;
+  }).join('');
+
+  const more = segs.length > 8 ? `<div style="font-size:10px;color:var(--muted);margin-top:6px">… and ${segs.length - 8} more</div>` : '';
+
+  detailResults.innerHTML = `
+    <div class="result-block">
+      <div class="result-title">Segments — ${ms}ms — ${segs.length} total</div>
+      ${rows}${more}
+    </div>`;
+}
+
+function drawSegments(segs) {
+  const canvas = document.getElementById('segCanvas');
+  if (!canvas) return;
+  canvas.style.display = 'block';
+
+  function render() {
+    const img = document.getElementById('detailImg');
+    if (!img || !img.naturalWidth) {
+      // Image not decoded yet — wait a frame and retry
+      requestAnimationFrame(render);
+      return;
+    }
+
+    const cW = imgWrap.offsetWidth;
+    const cH = imgWrap.offsetHeight;
+    canvas.width  = cW;
+    canvas.height = cH;
+
+    // Compute the actual rendered rect of the image inside the container
+    // (object-fit: contain centres it with letterbox bars)
+    const scale = Math.min(cW / img.naturalWidth, cH / img.naturalHeight);
+    const imgW  = img.naturalWidth  * scale;
+    const imgH  = img.naturalHeight * scale;
+    const offX  = (cW - imgW) / 2;
+    const offY  = (cH - imgH) / 2;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, cW, cH);
+
+    const hues = [120, 180, 60, 300, 30, 210, 0, 270];
+    segs.forEach((s, i) => {
+      const [x, y, w, h] = s.bbox;
+      const hue = hues[i % hues.length];
+      ctx.strokeStyle = `hsla(${hue}, 90%, 60%, 0.8)`;
+      ctx.lineWidth   = 1.5;
+      ctx.strokeRect(offX + x * imgW, offY + y * imgH, w * imgW, h * imgH);
+    });
+  }
+
+  requestAnimationFrame(render);
+}
+
+// ── Bulk index all ────────────────────────────────────────────────────────────
+btnIndex.addEventListener('click', async () => {
+  if (!vs || files.length === 0) return;
+  setBusy(true);
+  btnIndex.disabled = true;
+  btnSave.disabled  = true;
+  index = null;
+
+  const t0 = performance.now();
+  log(`Starting bulk index of ${files.length} images…`);
+
+  try {
+    index = await vs.buildIndex(files, {
+      onProgress: (done, total) => {
+        const pct  = (done / total) * 100;
+        const name = files[done - 1].id;
+        progressFill.style.width  = pct + '%';
+        progressLabel.textContent = `${done} / ${total} — ${name}`;
+        document.getElementById(`thumb-${done-1}`)?.classList.add('done');
+      },
+      imageProgress: {
+        onSegmentationDone: (n) => log(`  segmentation done — ${n} segments, embedding…`),
+        onEmbeddingDone:    (n) => log(`  embedding done — ${n} vectors`),
+      },
+    });
+
+    // Update seg counts on thumbnails
+    let totalSegments = 0;
+    for (const img of index.images) {
+      totalSegments += img.segments.length;
+      const fileIdx = files.findIndex(f => f.id === img.imageId);
+      if (fileIdx >= 0) {
+        const badge = document.getElementById(`segcount-${fileIdx}`);
+        if (badge) badge.textContent = img.segments.length;
+      }
+    }
+
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    log(`Indexed ${files.length} images → ${totalSegments} segments in ${elapsed}s`, 'ok');
+
+    statImages.textContent   = files.length;
+    statSegments.textContent = totalSegments;
+    statTime.textContent     = elapsed;
+    statAvg.textContent      = (totalSegments / files.length).toFixed(1);
+    progressLabel.textContent= `Done — ${totalSegments} segments`;
+    btnSave.disabled = false;
+  } catch (err) {
+    log(`Indexing failed: ${err.message}`, 'error');
+    console.error(err);
+    setStatus('error');
+  }
+
+  btnIndex.disabled = false;
+  setBusy(false);
+});
+
+// ── Save ─────────────────────────────────────────────────────────────────────
+btnSave.addEventListener('click', async () => {
+  if (!index) return;
+  try {
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    await index.serialize(dir);
+    log(`Index saved to "${dir.name}/.visual-search/"`, 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') log(`Save failed: ${err.message}`, 'error');
+  }
+});
+
+log('Ready. Load models to begin.');
+</script>
+</body>
+</html>

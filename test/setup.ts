@@ -26,7 +26,7 @@ export const EMBEDDER_URL  = '/models/clip-vit-b32-visual.onnx';
 
 export const FIXTURE_IMAGES = [
   '/fixtures/image-a.jpg',
-  '/fixtures/image-b.png',
+  '/fixtures/image-b.jpg',
   '/fixtures/image-c.jpg',
 ] as const;
 

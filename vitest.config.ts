@@ -13,7 +13,7 @@ export default defineConfig({
     hookTimeout: 60_000,
     watch: true
   },
-  publicDir: 'scripts',
+  publicDir: 'assets',
   optimizeDeps: {
     exclude: ['onnxruntime-web']
   }

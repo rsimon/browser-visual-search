@@ -71,10 +71,20 @@ export interface LoadOptions {
 }
 
 /**
+ * Progress callbacks for a single indexImage() call.
+ * Useful for showing granular progress in the UI.
+ */
+export interface IndexImageOptions {
+  onSegmentationDone?: (segmentCount: number) => void;
+  onEmbeddingDone?:    (segmentCount: number) => void;
+}
+
+/**
  * Options for buildIndex().
  */
 export interface BuildIndexOptions {
-  onProgress?: (completed: number, total: number) => void;
+  onProgress?:    (completed: number, total: number) => void;
+  imageProgress?: IndexImageOptions;
 }
 
 /**

@@ -3,8 +3,8 @@
  *
  * The model produces two output tensors:
  *
- *   output0  [1, 37, 8400]
- *            For each of 8400 anchors:
+ *   output0  [1, 37, N]  where N = anchors (8400 for 640px input, 21504 for 1024px input)
+ *            For each of N anchors:
  *              [0..3]   cx, cy, w, h  (model-input pixel space)
  *              [4]      objectness confidence
  *              [5..36]  32 mask coefficients
@@ -176,8 +176,8 @@ export function decodeDetections(
   origW: number,
   origH: number,
 ): RawDetection[] {
-  const NUM_ANCHORS = 8400;
   const NUM_ATTRS   = 37; // 4 box + 1 conf + 32 coeffs
+  const NUM_ANCHORS = output0Data.length / NUM_ATTRS; // 8400 for 640px input, 21504 for 1024px
 
   // ── Step 1: collect proposals above confidence threshold ──────────────────
   const proposals: Proposal[] = [];
