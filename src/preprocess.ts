@@ -6,7 +6,7 @@
  * The image is letterboxed (aspect ratio preserved, padded with 0.5 grey).
  */
 
-export const MODEL_INPUT_SIZE = 1024;
+export const MODEL_INPUT_SIZE = 1280;
 
 export interface LetterboxResult {
   tensor: Float32Array;      // [1, 3, H, W] flat, row-major

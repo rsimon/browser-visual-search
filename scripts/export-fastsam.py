@@ -39,11 +39,11 @@ model = FastSAM(str(INPUT_MODEL))
 print("Exporting to ONNX ...")
 model.export(
     format="onnx",
-    imgsz=1024,
+    imgsz=1280,
     opset=12,
     simplify=False,
     dynamic=False,
-    max_det=1500,
+    max_det=800,
 )
 
 # Ultralytics saves alongside the .pt file — move to our preferred path

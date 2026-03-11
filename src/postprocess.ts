@@ -30,7 +30,7 @@ export interface RawDetection {
   area: number;
 }
 
-const CONF_THRESHOLD = 0.25;
+const CONF_THRESHOLD = 0.01;
 const IOU_THRESHOLD  = 0.5;
 const PROTO_SIZE     = 256; // output1 spatial dimension
 const NUM_PROTOS     = 32;
