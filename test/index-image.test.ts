@@ -1,74 +1,80 @@
 /**
- * tests/setup.ts
- * --------------
- * Loads the VisualSearch instance once and exposes shared helpers.
- * Import from individual test files rather than re-loading models each time.
+ * indexImage.test.ts
+ * ------------------
+ * Validates the FastSAM segmentation + CLIP embedding pipeline end-to-end.
  *
- * Assumes models are served from /models/ (i.e. placed in public/models/).
- * Assumes test fixture images are served from /fixtures/ (public/fixtures/).
+ * Checks:
+ *   - At least one segment is returned
+ *   - Every segment has a valid normalised bbox and area
+ *   - Every segment has a 512-dim unit-normalised embedding
+ *   - Segments are sorted largest-area-first (matching server-side behaviour)
+ *   - Results are deterministic
  */
 
-import { loadVisualSearch } from '../src/visual-search.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { getVS, fetchFixture, assertValidBBox, FIXTURE_IMAGES } from './setup.js';
 import type { VisualSearch } from '../src/visual-search.js';
+import type { Segment } from '../src/types.js';
 
-// ── Model URLs (served by Vitest's static server from public/) ────────────────
+const EMBEDDING_DIM = 512;
 
-export const SEGMENTER_URL = '/models/fastsam-s.onnx';
-export const EMBEDDER_URL  = '/models/clip-vit-b32-visual.onnx';
-
-// ── Fixture image URLs ────────────────────────────────────────────────────────
-// Place a handful of JPEG/PNG images in public/fixtures/.
-// Tests reference them by name; helpers below fetch them as Files.
-
-export const FIXTURE_IMAGES = [
-  '/fixtures/image-a.jpg',
-  '/fixtures/image-b.jpg',
-  '/fixtures/image-c.jpg',
-] as const;
-
-// ── Singleton VS instance ─────────────────────────────────────────────────────
-
-let _vs: VisualSearch | null = null;
-
-export async function getVS(): Promise<VisualSearch> {
-  if (!_vs) {
-    _vs = await loadVisualSearch({
-      segmenterUrl: SEGMENTER_URL,
-      embedderUrl:  EMBEDDER_URL,
-      // Use WebGL if available, fall back to WASM
-      executionProviders: ['webgl', 'wasm'],
-    });
-  }
-  return _vs;
+function norm(v: Float32Array): number {
+  let s = 0;
+  for (const x of v) s += x * x;
+  return Math.sqrt(s);
 }
 
-// ── Fetch a fixture image as a File ──────────────────────────────────────────
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
-export async function fetchFixture(url: string): Promise<File> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch fixture: ${url} (${res.status})`);
-  const blob = await res.blob();
-  const name = url.split('/').at(-1) ?? 'fixture';
-  return new File([blob], name, { type: blob.type });
-}
+describe('indexImage', () => {
+  let vs: VisualSearch;
+  let fileA: File;
+  let segments: Segment[];
 
-// ── Simple assertion helpers ──────────────────────────────────────────────────
+  beforeAll(async () => {
+    vs       = await getVS();
+    fileA    = await fetchFixture(FIXTURE_IMAGES[0]);
+    segments = await vs.indexImage({ id: 'test-image-a', file: fileA });
+  });
 
-/** Assert a value is a finite number in [min, max]. */
-export function assertInRange(value: number, min: number, max: number, label = 'value'): void {
-  if (!isFinite(value) || value < min || value > max) {
-    throw new Error(`Expected ${label} in [${min}, ${max}], got ${value}`);
-  }
-}
+  it('returns at least one segment', () => {
+    expect(segments.length).toBeGreaterThan(0);
+  });
 
-/** Assert a BBox is a valid normalised [x, y, w, h]. */
-export function assertValidBBox(bbox: number[], label = 'bbox'): void {
-  if (bbox.length !== 4) throw new Error(`${label}: expected 4 elements, got ${bbox.length}`);
-  const [x, y, w, h] = bbox;
-  assertInRange(x, 0, 1, `${label}[x]`);
-  assertInRange(y, 0, 1, `${label}[y]`);
-  assertInRange(w, 0, 1, `${label}[w]`);
-  assertInRange(h, 0, 1, `${label}[h]`);
-  if (x + w > 1.001) throw new Error(`${label}: x+w=${x+w} exceeds 1`);
-  if (y + h > 1.001) throw new Error(`${label}: y+h=${y+h} exceeds 1`);
-}
+  it('logs segment count (informational)', () => {
+    console.log(`indexImage: ${segments.length} segments for ${FIXTURE_IMAGES[0]}`);
+    // Not a real assertion — just useful to see in test output
+  });
+
+  it('every segment has a valid normalised bbox', () => {
+    for (const seg of segments) {
+      assertValidBBox(seg.bbox, `segment bbox`);
+    }
+  });
+
+  it('every segment has a normalised area in (0, 1]', () => {
+    for (const seg of segments) {
+      expect(seg.area).toBeGreaterThan(0);
+      expect(seg.area).toBeLessThanOrEqual(1.0);
+    }
+  });
+
+  it('every segment has a 512-dim unit-normalised embedding', () => {
+    for (const seg of segments) {
+      expect(seg.embedding).toBeInstanceOf(Float32Array);
+      expect(seg.embedding.length).toBe(EMBEDDING_DIM);
+      expect(norm(seg.embedding)).toBeCloseTo(1.0, 4);
+    }
+  });
+
+  it('segments are sorted largest-area-first', () => {
+    for (let i = 1; i < segments.length; i++) {
+      expect(segments[i - 1].area).toBeGreaterThanOrEqual(segments[i].area);
+    }
+  });
+
+  it('results are deterministic — same image produces same segment count', async () => {
+    const segments2 = await vs.indexImage({ id: 'test-image-a-2', file: fileA });
+    expect(segments2.length).toBe(segments.length);
+  });
+});

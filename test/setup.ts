@@ -2,16 +2,14 @@
  * tests/setup.ts
  * --------------
  * Loads the VisualSearch instance once and exposes shared helpers.
- * Import from individual test files rather than re-loading models each time.
  *
- * Assumes models are served from /models/ (i.e. placed in public/models/).
- * Assumes test fixture images are served from /fixtures/ (public/fixtures/).
+ * Assumes models are served from /models/ (placed in assets/models/).
+ * Assumes test fixture images are served from /fixtures/ (assets/fixtures/).
  */
 
 import * as ort from 'onnxruntime-web';
 
 // ORT Web needs its WASM files served as static assets.
-// node_modules/onnxruntime-web/dist/ is where they live —
 // Vite serves node_modules via /@fs/ in dev mode.
 ort.env.wasm.wasmPaths = '/node_modules/onnxruntime-web/dist/';
 
@@ -24,7 +22,6 @@ export const SEGMENTER_URL = '/models/fastsam-s.onnx';
 export const EMBEDDER_URL  = '/models/clip-vit-b32-visual.onnx';
 
 // ── Fixture image URLs ────────────────────────────────────────────────────────
-// Place a handful of JPEG/PNG images in public/fixtures/.
 // Tests reference them by name; helpers below fetch them as Files.
 
 export const FIXTURE_IMAGES = [
@@ -48,8 +45,6 @@ export async function getVS(): Promise<VisualSearch> {
   }
   return _vs;
 }
-
-// ── Fetch a fixture image as a File ──────────────────────────────────────────
 
 export async function fetchFixture(url: string): Promise<File> {
   const res = await fetch(url);

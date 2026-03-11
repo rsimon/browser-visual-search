@@ -27,10 +27,10 @@ from pathlib import Path
 from ultralytics import FastSAM
 
 MODELS_DIR = Path("models")
-MODELS_DIR.mkdir(exist_ok=True)
+ASSETS_DIR = Path("../assets/models")
 
 INPUT_MODEL  = MODELS_DIR / "FastSAM-s.pt"
-OUTPUT_MODEL = MODELS_DIR / "fastsam-s.onnx"
+OUTPUT_MODEL = ASSETS_DIR / "fastsam-s.onnx"
 
 print(f"Loading {INPUT_MODEL} ...")
 model = FastSAM(str(INPUT_MODEL))

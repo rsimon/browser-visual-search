@@ -46,10 +46,8 @@ PRETRAINED  = "openai"
 INPUT_SIZE  = 224
 OPSET       = 14
 
-MODELS_DIR  = Path("models")
-OUTPUT_PATH = MODELS_DIR / "clip-vit-b32-visual.onnx"
-
-MODELS_DIR.mkdir(exist_ok=True)
+ASSETS_DIR  = Path("../assets/models")
+OUTPUT_PATH = ASSETS_DIR / "clip-vit-b32-visual.onnx"
 
 print(f"Loading {MODEL_NAME} ({PRETRAINED}) ...")
 model, _, _ = open_clip.create_model_and_transforms(MODEL_NAME, pretrained=PRETRAINED)
