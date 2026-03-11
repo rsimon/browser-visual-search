@@ -9,13 +9,14 @@ curl -L https://github.com/ultralytics/assets/releases/download/v8.2.0/FastSAM-s
 
 # Place FastSAM-s.pt in ./models/ first (download from Ultralytics)
 uv run export-fastsam.py
-# → models/fastsam-s.onnx  (~40 MB)
+# → ../assets/fastsam-s.onnx  (~45 MB)
 ```
 
 ## 2. CLIP ViT-B/32 (embedder)
 
 ```bash
 uv run export-clip.py
+# → ../assets/clip-vit-b32-visual.onnx  (~350 MB)
 # Note: model weights are fetched automatically
 ```
 

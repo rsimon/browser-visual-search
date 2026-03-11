@@ -1,4 +1,4 @@
 node_modules/
-scripts/models/*.onnx
+assets/models/*.onnx
 scripts/models/*.pt
 .DS_Store
