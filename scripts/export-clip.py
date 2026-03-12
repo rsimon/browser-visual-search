@@ -7,18 +7,9 @@ export_clip.py
 --------------
 Export the CLIP ViT-B/32 visual encoder to ONNX for use with onnxruntime-web.
 
-IMPORTANT: The model name and pretrained weights here must stay in sync with
-embedder.py (MODEL_NAME = "ViT-B-32", PRETRAINED = "openai"). Do not change
-these without also updating the server-side embedder and re-indexing.
-
 Usage:
     uv run scripts/export_clip.py
-    # Produces: models/clip-vit-b32-visual.onnx
-
-The exported model:
-    Input:  image    [1, 3, 224, 224]  float32, normalised with CLIP mean/std
-    Output: output   [1, 512]          float32, un-normalised embedding
-                                       (L2 normalisation applied in TypeScript)
+    # Produces: assets/models/clip-vit-b32-visual.onnx
 
 Notes:
   - Only the visual encoder is exported (not the text encoder).
