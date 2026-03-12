@@ -10,18 +10,10 @@
 import type { SearchResult } from './types.js';
 import type { VisualSearchIndex } from './index-store.js';
 
-const EMBEDDING_DIM = 512;
+// small helper to compute cosine similarity of two vectors
+import cosineSimilarity from 'compute-cosine-similarity';
 
-/**
- * Dot product of two unit-normalised vectors — equivalent to cosine similarity.
- */
-function dotProduct(a: Float32Array, b: Float32Array, bOffset: number): number {
-  let sum = 0;
-  for (let i = 0; i < EMBEDDING_DIM; i++) {
-    sum += a[i] * b[bOffset + i];
-  }
-  return sum;
-}
+const EMBEDDING_DIM = 512;
 
 /**
  * Search the index for segments most similar to queryEmbedding.
@@ -40,7 +32,9 @@ export function nearestNeighbours(
 
   for (const image of images) {
     for (const seg of image.segments) {
-      const score = dotProduct(queryEmbedding, embeddings, seg.embeddingRow * EMBEDDING_DIM);
+      const offset = seg.embeddingRow * EMBEDDING_DIM;
+      const vec = embeddings.subarray(offset, offset + EMBEDDING_DIM);
+      const score = cosineSimilarity(queryEmbedding, vec);
       results.push({
         imageId: image.imageId,
         bbox:    seg.bbox,

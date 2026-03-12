@@ -4,6 +4,10 @@
  */
 
 export { loadVisualSearch, deserializeIndex } from './visual-search.js';
+export { createSegmenter } from './segment.js';
+export { createEmbedder } from './embed.js';
+export { nearestNeighbours } from './search.js';
+export { createIndexBuilder } from './index-store.js';
 
 export type {
   VisualSearch,
