@@ -23,7 +23,7 @@ uv run export-clip.py
 
 # Optional: quantize to int8 for a ~4× smaller file
 uv run quantize-clip.py
-# → ../assets/clip-vit-b32-visual-int8.onnx  (~89 MB)
+# → ../assets/clip-vit-b32-visual-int8.onnx  (~95 MB)
 ```
 
 ### float32 vs int8
@@ -31,7 +31,7 @@ uv run quantize-clip.py
 | Model | Size | Quality |
 |---|---|---|
 | `clip-vit-b32-visual.onnx` | ~350 MB | Full float32 precision |
-| `clip-vit-b32-visual-int8.onnx` | ~90 MB | Negligible quality loss |
+| `clip-vit-b32-visual-int8.onnx` | ~95 MB | Negligible quality loss |
 
 The int8 model is recommended for most use cases. Pass either as `embedderUrl`
 to `loadVisualSearch()`.

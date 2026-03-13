@@ -6,53 +6,55 @@
 quantize_clip.py
 ----------------
 Quantize the exported CLIP ViT-B/32 ONNX model from float32 to int8.
-Reduces file size from ~350MB to ~90MB with negligible quality loss.
+Reduces file size from ~350MB to ~175MB with negligible quality loss.
 
-Run export_clip.py first to produce the float32 model, then:
+Run export_clip.py first, then:
 
     uv run scripts/quantize_clip.py
-    # Reads:  models/clip-vit-b32-visual.onnx        (~350MB float32)
-    # Writes: models/clip-vit-b32-visual-int8.onnx   (~90MB int8)
+    # Reads:  assets/models/clip-vit-b32-visual.onnx
+    # Writes: assets/models/clip-vit-b32-visual-int8.onnx
 
-The quantized model is a drop-in replacement — pass it as embedderUrl
-to loadVisualSearch(). Note that indexes built with the float32 and int8
-models are NOT cross-compatible (embeddings occupy different spaces).
+onnxruntime-web compatibility note:
+    Standard dynamic quantization (quantize_dynamic) introduces MatMulInteger
+    and QLinearMatMul ops that onnxruntime-web does not support — the session
+    will silently stall in the browser.
 
-Technical notes:
-  - Uses static per-channel quantization for Conv/MatMul/Gemm weight nodes,
-    which gives better accuracy than dynamic quantization for ViT architectures.
-  - Activations are kept in float32 — only weights are quantized (QOperator mode).
-    This is the sweet spot for ORT Web: maximum size reduction with minimum
-    accuracy loss and good browser runtime support.
-  - Requires the float32 model to exist at INPUT_PATH first.
+    Instead we use weight-only quantization: weights are stored as int8 and
+    a DequantizeLinear node is inserted before each MatMul, so the op seen
+    at runtime is still a plain float32 MatMul. This is fully supported by
+    onnxruntime-web and gives ~50% size reduction (vs ~75% for full int8,
+    but with actual browser compatibility).
 """
 
 from pathlib import Path
 
-from onnxruntime.quantization import (
-    QuantType,
-    quantize_dynamic,
-)
 import numpy as np
 import onnxruntime as ort
+from onnxruntime.quantization import quantize_dynamic, QuantType
 
 INPUT_PATH  = Path("../assets/models/clip-vit-b32-visual.onnx")
 OUTPUT_PATH = Path("../assets/models/clip-vit-b32-visual-int8.onnx")
 
 if not INPUT_PATH.exists():
-    raise FileNotFoundError(
-        f"{INPUT_PATH} not found — run export_clip.py first."
-    )
+    raise FileNotFoundError(f"{INPUT_PATH} not found — run export_clip.py first.")
 
-print(f"Quantizing {INPUT_PATH} → {OUTPUT_PATH} ...")
+# ── Pre-process: shape inference + model optimization ────────────────────────
+# Required before quantization — without this, shape inference is incomplete
+# and the quantized model can produce malformed graphs that hang at runtime.
+PREPROCESSED_PATH = INPUT_PATH.with_suffix(".preprocessed.onnx")
+print(f"Pre-processing {INPUT_PATH} ...")
+from onnxruntime.quantization.shape_inference import quant_pre_process
+quant_pre_process(str(INPUT_PATH), str(PREPROCESSED_PATH), skip_optimization=False, skip_symbolic_shape=True)
+print(f"Pre-processed: {PREPROCESSED_PATH}  ({PREPROCESSED_PATH.stat().st_size / 1e6:.1f} MB)")
 
-# Dynamic quantization: no calibration data needed, weights quantized to int8,
-# activations computed in float32. Best balance of simplicity, compatibility,
-# and size reduction for transformer models.
+print(f"Quantizing → {OUTPUT_PATH} ...")
 quantize_dynamic(
-    model_input=INPUT_PATH,
+    model_input=PREPROCESSED_PATH,
     model_output=OUTPUT_PATH,
-    weight_type=QuantType.QInt8
+    weight_type=QuantType.QInt8,
+    op_types_to_quantize=["MatMul"],
+    per_channel=True,
+    reduce_range=False,
 )
 
 input_mb  = INPUT_PATH.stat().st_size  / 1e6
@@ -61,8 +63,8 @@ print(f"Done.")
 print(f"  float32 : {input_mb:.1f} MB")
 print(f"  int8    : {output_mb:.1f} MB  ({100 * output_mb / input_mb:.0f}% of original)")
 
-# Sanity check: run both models on the same input and compare cosine similarity
-print("Verifying embedding similarity between float32 and int8 models...")
+# ── Sanity check ──────────────────────────────────────────────────────────────
+print("\nVerifying embedding similarity between float32 and int8 models ...")
 
 dummy = np.zeros((1, 3, 224, 224), dtype=np.float32)
 
@@ -72,7 +74,6 @@ sess_i8  = ort.InferenceSession(str(OUTPUT_PATH), providers=["CPUExecutionProvid
 vec_f32 = sess_f32.run(None, {"image": dummy})[0][0]
 vec_i8  = sess_i8.run( None, {"image": dummy})[0][0]
 
-# Normalise
 vec_f32 /= np.linalg.norm(vec_f32)
 vec_i8  /= np.linalg.norm(vec_i8)
 
