@@ -1,9 +1,7 @@
 
 export { embedImage, embedBatch } from './embedding/index.js';
 export { segmentImage } from './segmentation/index.js';
-export { buildIndex } from './search/build-index.js';
-export { loadIndex } from './search/load-index.js';
-export { search } from './search/query.js';
+export { buildIndex, loadIndex } from './search/index.js';
 
 export type {
   BBox,
