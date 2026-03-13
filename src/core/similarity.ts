@@ -7,8 +7,8 @@
  * This runs entirely in JS with no ONNX involvement.
  */
 
-import type { SearchResult } from './types.js';
-import type { VisualSearchIndex } from './index-store.js';
+import type { SearchResult } from '../types.js';
+import type { VisualSearchIndex } from '../indexing/store.js';
 
 const EMBEDDING_DIM = 512;
 

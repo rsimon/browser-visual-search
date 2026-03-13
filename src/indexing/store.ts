@@ -9,7 +9,7 @@ import type {
   PersistedIndex,
   PersistedSegment,
   Segment,
-} from './types.js';
+} from '../types.js';
 
 const DIR_NAME   = '.visual-search';
 const INDEX_FILE = 'index.json';

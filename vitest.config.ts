@@ -5,13 +5,13 @@ export default defineConfig({
   test: {
     browser: {
       enabled: true,
-      headless: false,
+      headless: true,
       provider: playwright(),
       instances: [{ browser: 'chromium' }]
     },
     testTimeout: 120_000,
     hookTimeout: 60_000,
-    watch: true
+    watch: false
   },
   publicDir: 'assets',
   optimizeDeps: {

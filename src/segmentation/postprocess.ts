@@ -21,13 +21,16 @@
  */
 
 import { modelBoxToNormalisedBBox } from './preprocess.js';
-import type { BBox } from './types.js';
+import type { BBox } from '../types.js';
 
 export interface RawDetection {
+
   /** Absolute pixel bbox in original image space, normalised [x,y,w,h] */
   bbox: BBox;
+
   /** Normalised mask area in [0,1] relative to original image */
   area: number;
+
 }
 
 const CONF_THRESHOLD = 0.01;
@@ -37,14 +40,12 @@ const NUM_PROTOS     = 32;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function sigmoid(x: number): number {
-  return 1 / (1 + Math.exp(-x));
-}
+const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 
-function intersectionArea(
+const intersectionArea = (
   ax1: number, ay1: number, ax2: number, ay2: number,
   bx1: number, by1: number, bx2: number, by2: number,
-): number {
+): number => {
   const ix1 = Math.max(ax1, bx1);
   const iy1 = Math.max(ay1, by1);
   const ix2 = Math.min(ax2, bx2);
@@ -52,10 +53,10 @@ function intersectionArea(
   return Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
 }
 
-function iou(
+const iou = (
   ax1: number, ay1: number, ax2: number, ay2: number,
   bx1: number, by1: number, bx2: number, by2: number,
-): number {
+): number => {
   const inter = intersectionArea(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2);
   if (inter === 0) return 0;
   const aArea = (ax2 - ax1) * (ay2 - ay1);
@@ -66,12 +67,16 @@ function iou(
 // ── NMS ──────────────────────────────────────────────────────────────────────
 
 interface Proposal {
+
   x1: number; y1: number; x2: number; y2: number;
+
   conf: number;
+
   coeffs: Float32Array; // length 32
+
 }
 
-function nms(proposals: Proposal[], iouThreshold: number): Proposal[] {
+const nms = (proposals: Proposal[], iouThreshold: number): Proposal[] => {
   // Sort descending by confidence
   proposals.sort((a, b) => b.conf - a.conf);
 
@@ -102,7 +107,7 @@ function nms(proposals: Proposal[], iouThreshold: number): Proposal[] {
  * protos: flat Float32Array of shape [32, 256, 256], row-major.
  * Returns a flat Float32Array of shape [256, 256] with values in [0,1].
  */
-function decodeMask(coeffs: Float32Array, protos: Float32Array): Float32Array {
+const decodeMask = (coeffs: Float32Array, protos: Float32Array): Float32Array => {
   const protoSize = PROTO_SIZE * PROTO_SIZE;
   const mask = new Float32Array(protoSize);
 
@@ -130,12 +135,12 @@ function decodeMask(coeffs: Float32Array, protos: Float32Array): Float32Array {
  * the 1024×1024 model-input space, so we scale down by 4 to index into the
  * prototype mask.
  */
-function maskAreaInBBox(
+const maskAreaInBBox = (
   mask: Float32Array,
   x1: number, y1: number, x2: number, y2: number,
   origW: number, origH: number,
   threshold = 0.5,
-): number {
+): number => {
   const scale = PROTO_SIZE / 1024;
   const mx1 = Math.max(0,            Math.floor(x1 * scale));
   const my1 = Math.max(0,            Math.floor(y1 * scale));
@@ -143,6 +148,7 @@ function maskAreaInBBox(
   const my2 = Math.min(PROTO_SIZE,   Math.ceil (y2 * scale));
 
   let positive = 0;
+
   for (let row = my1; row < my2; row++) {
     for (let col = mx1; col < mx2; col++) {
       if (mask[row * PROTO_SIZE + col] > threshold) positive++;
@@ -167,7 +173,7 @@ function maskAreaInBBox(
  * @param origW        Original image width in px
  * @param origH        Original image height in px
  */
-export function decodeDetections(
+export const decodeDetections = (
   output0Data: Float32Array,
   output1Data: Float32Array,
   scale: number,
@@ -175,7 +181,7 @@ export function decodeDetections(
   padY: number,
   origW: number,
   origH: number,
-): RawDetection[] {
+): RawDetection[] => {
   const NUM_ATTRS   = 37; // 4 box + 1 conf + 32 coeffs
   const NUM_ANCHORS = output0Data.length / NUM_ATTRS; // 8400 for 640px input, 21504 for 1024px
 

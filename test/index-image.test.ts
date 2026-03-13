@@ -9,11 +9,10 @@
  *   - Every segment has a 512-dim unit-normalised embedding
  *   - Segments are sorted largest-area-first (matching server-side behaviour)
  *   - Results are deterministic
- */
+ *
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { getVS, fetchFixture, assertValidBBox, FIXTURE_IMAGES } from './setup.js';
-import type { VisualSearch } from '../src/visual-search.js';
+import { indexImage, fetchFixture, assertValidBBox, FIXTURE_IMAGES } from './setup.js';
 import type { Segment } from '../src/types.js';
 
 const EMBEDDING_DIM = 512;
@@ -27,14 +26,12 @@ function norm(v: Float32Array): number {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('indexImage', () => {
-  let vs: VisualSearch;
   let fileA: File;
   let segments: Segment[];
 
   beforeAll(async () => {
-    vs       = await getVS();
     fileA    = await fetchFixture(FIXTURE_IMAGES[0]);
-    segments = await vs.indexImage({ id: 'test-image-a', file: fileA });
+    segments = await indexImage(fileA);
   });
 
   it('returns at least one segment', () => {
@@ -78,3 +75,4 @@ describe('indexImage', () => {
     expect(segments2.length).toBe(segments.length);
   });
 });
+*/

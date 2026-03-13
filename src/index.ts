@@ -1,18 +1,17 @@
-/**
- * browser-visual-search
- * Public package entry point.
- */
-
-export { loadVisualSearch, deserializeIndex } from './visual-search.js';
+export { loadIndex } from './indexing/load.js';
+export { search } from './core/search.js';
+export { embedImage, embedBatch } from './embedding/embed.js';
+export { buildIndex } from './indexing/builder.js';
+export { segmentImage } from './segmentation/segment.js';
 
 export type {
-  VisualSearch,
-  VisualSearchIndex,
   BBox,
   ImageInput,
   Segment,
   SearchResult,
-  LoadOptions,
   BuildIndexOptions,
   SearchOptions,
-} from './visual-search.js';
+  IndexImageOptions,
+} from './types.js';
+
+export type { VisualSearchIndex } from './indexing/store.js';
