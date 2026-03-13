@@ -1,17 +1,25 @@
-export { loadIndex } from './indexing/load.js';
-export { search } from './core/search.js';
-export { embedImage, embedBatch } from './embedding/embed.js';
-export { buildIndex } from './indexing/builder.js';
-export { segmentImage } from './segmentation/segment.js';
+
+export { embedImage, embedBatch } from './embedding/index.js';
+export { segmentImage } from './segmentation/index.js';
+export { buildIndex } from './search/build-index.js';
+export { loadIndex } from './search/load-index.js';
+export { search } from './search/query.js';
 
 export type {
   BBox,
-  ImageInput,
-  Segment,
-  SearchResult,
-  BuildIndexOptions,
+  IndexedImage,
+  IndexedImageSegment,
   SearchOptions,
-  IndexImageOptions,
+  SearchResult,
+  Segment,
+  VisualSearchIndex
 } from './types.js';
 
-export type { VisualSearchIndex } from './indexing/store.js';
+export type {
+  BuildOptions,
+  BuildProgress
+} from './search/build-index.js';
+
+export type {
+  LoadIndexOptions
+} from './search/load-index.js';
