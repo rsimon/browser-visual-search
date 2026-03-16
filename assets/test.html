@@ -387,22 +387,28 @@
 </main>
 
 <script type="module">
-import { loadVisualSearch } from '/src/visual-search.ts';
+import { buildIndex } from '/src/search/build-index.ts';
+import { embedImage } from '/src/embedding/embed.ts';
+import { segmentImage } from '/src/segmentation/index.ts';
+import { embedBatch } from '/src/embedding/embed.ts';
 
-// ── State ────────────────────────────────────────────────────────────────────
-let vs            = null;
+// ── State ─────────────────────────────────────────────────────────────────
+let dirHandle     = null;
 let files         = [];   // { id, file, url }[]
 let index         = null;
 let selectedIdx   = -1;
 let activeBackend = 'unknown';
 
-// ── DOM ──────────────────────────────────────────────────────────────────────
+const embedderUrl  = () => document.getElementById('embedderUrl').value.trim();
+const segmenterUrl = () => document.getElementById('segmenterUrl').value.trim();
+const modelOpts    = () => ({ embedderUrl: embedderUrl(), segmenterUrl: segmenterUrl(), executionProviders: ['webgpu', 'wasm'] });
+
+// ── DOM ───────────────────────────────────────────────────────────────────
 const statusDot    = document.getElementById('statusDot');
 const backendBadge = document.getElementById('backendBadge');
 const btnLoad      = document.getElementById('btnLoad');
 const btnPickImages= document.getElementById('btnPickImages');
 const btnIndex     = document.getElementById('btnIndex');
-const btnSave      = document.getElementById('btnSave');
 const btnEmbed     = document.getElementById('btnEmbed');
 const btnSegment   = document.getElementById('btnSegment');
 const thumbGrid    = document.getElementById('thumbGrid');
@@ -410,7 +416,6 @@ const progressFill = document.getElementById('progressFill');
 const progressLabel= document.getElementById('progressLabel');
 const logPanel     = document.getElementById('logPanel');
 const imgWrap      = document.getElementById('imgWrap');
-const segCanvas    = document.getElementById('segCanvas');
 const selectedName = document.getElementById('selectedName');
 const detailResults= document.getElementById('detailResults');
 const statImages   = document.getElementById('statImages');
@@ -418,7 +423,7 @@ const statSegments = document.getElementById('statSegments');
 const statTime     = document.getElementById('statTime');
 const statAvg      = document.getElementById('statAvg');
 
-// ── Logging ──────────────────────────────────────────────────────────────────
+// ── Logging ───────────────────────────────────────────────────────────────
 function log(msg, level = 'info') {
   const time  = new Date().toTimeString().slice(0, 8);
   const entry = document.createElement('div');
@@ -431,67 +436,80 @@ function log(msg, level = 'info') {
 function setStatus(s) { statusDot.className = 'status-dot ' + s; }
 function setBusy(b)   { setStatus(b ? 'busy' : 'ready'); }
 
-// ── Detect which ORT backend actually ran ────────────────────────────────────
-// We probe by checking env after a tiny inference — ORT sets env.wasm.numThreads
-// and similar. The cleanest signal is just trying webgpu first.
-async function detectBackend() {
-  // We'll update this after model load based on what succeeded
-  return activeBackend;
-}
-
-// ── Load models ──────────────────────────────────────────────────────────────
+// ── Load models (warm-up) ─────────────────────────────────────────────────
 btnLoad.addEventListener('click', async () => {
-  const segUrl = document.getElementById('segmenterUrl').value.trim();
-  const embUrl = document.getElementById('embedderUrl').value.trim();
-
   btnLoad.disabled = true;
   setBusy(true);
-  log(`Loading segmenter: ${segUrl}`);
-  log(`Loading embedder:  ${embUrl}`);
+  log(`Warming up embedder: ${embedderUrl()}`);
 
-  // Try WebGPU first, fall back to WASM
-  const providerSets = [['webgpu', 'wasm'], ['wasm']];
+  try {
+    // Warm up by embedding a blank 1×1 image — forces ONNX session creation
+    const blank = new File([new Uint8Array([ // minimal 1×1 white JPEG
+      0xff,0xd8,0xff,0xe0,0,0x10,0x4a,0x46,0x49,0x46,0,1,1,0,0,1,0,1,0,0,
+      0xff,0xdb,0,0x43,0,8,6,6,7,6,5,8,7,7,7,9,9,8,0xa,0xc,0x14,0xd,0xc,
+      0xb,0xb,0xc,0x19,0x12,0x13,0xf,0x14,0x1d,0x1a,0x1f,0x1e,0x1d,0x1a,
+      0x1c,0x1c,0x20,0x24,0x2e,0x27,0x20,0x22,0x2c,0x23,0x1c,0x1c,0x28,
+      0x37,0x29,0x2c,0x30,0x31,0x34,0x34,0x34,0x1f,0x27,0x39,0x3d,0x38,
+      0x32,0x3c,0x2e,0x33,0x34,0x32,0xff,0xc0,0,0xb,8,0,1,0,1,1,1,0x11,
+      0,0xff,0xc4,0,0x1f,0,0,1,5,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,2,3,4,5,
+      6,7,8,9,0xa,0xb,0xff,0xc4,0,0xb5,0x10,0,2,1,3,3,2,4,3,5,5,4,4,0,0,
+      1,0x7d,1,2,3,0,4,0x11,5,0x12,0x21,0x31,0x41,6,0x13,0x51,0x61,7,0x22,
+      0x71,0x14,0x32,0x81,0x91,0xa1,8,0x23,0x42,0xb1,0xc1,0x15,0x52,0xd1,
+      0xf0,0x24,0x33,0x62,0x72,0x82,9,0x0a,0x16,0x17,0x18,0x19,0x1a,0x25,
+      0x26,0x27,0x28,0x29,0x2a,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,0x43,
+      0x44,0x45,0x46,0x47,0x48,0x49,0x4a,0x53,0x54,0x55,0x56,0x57,0x58,
+      0x59,0x5a,0x63,0x64,0x65,0x66,0x67,0x68,0x69,0x6a,0x73,0x74,0x75,
+      0x76,0x77,0x78,0x79,0x7a,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8a,
+      0x92,0x93,0x94,0x95,0x96,0x97,0x98,0x99,0x9a,0xa2,0xa3,0xa4,0xa5,
+      0xa6,0xa7,0xa8,0xa9,0xaa,0xb2,0xb3,0xb4,0xb5,0xb6,0xb7,0xb8,0xb9,
+      0xba,0xc2,0xc3,0xc4,0xc5,0xc6,0xc7,0xc8,0xc9,0xca,0xd2,0xd3,0xd4,
+      0xd5,0xd6,0xd7,0xd8,0xd9,0xda,0xe1,0xe2,0xe3,0xe4,0xe5,0xe6,0xe7,
+      0xe8,0xe9,0xea,0xf1,0xf2,0xf3,0xf4,0xf5,0xf6,0xf7,0xf8,0xf9,0xfa,
+      0xff,0xda,0,8,1,1,0,0,0x3f,0,0xfb,0x28,0xa2,0x8a,0xff,0xd9
+    ])], 'warmup.jpg', { type: 'image/jpeg' });
 
-  for (const providers of providerSets) {
+    await embedImage(blank, undefined, { embedderUrl: embedderUrl(), executionProviders: ['webgpu', 'wasm'] });
+
+    // Detect which backend was used based on what didn't throw
+    activeBackend = 'webgpu';
+  } catch {
     try {
-      vs = await loadVisualSearch({ segmenterUrl: segUrl, embedderUrl: embUrl, executionProviders: providers });
-      activeBackend = providers[0] === 'webgpu' ? 'webgpu' : 'wasm';
-      backendBadge.textContent = activeBackend.toUpperCase();
-      backendBadge.className   = `backend-badge ${activeBackend}`;
-      log(`Models loaded — backend: ${activeBackend}`, 'ok');
-      setStatus('ready');
-      btnPickImages.disabled = false;
-      break;
+      await embedImage(new File([], 'warmup.jpg'), undefined, { embedderUrl: embedderUrl(), executionProviders: ['wasm'] });
+      activeBackend = 'wasm';
     } catch (err) {
-      if (providers[0] === 'webgpu') {
-        log(`WebGPU unavailable, falling back to WASM`, 'warn');
-      } else {
-        log(`Failed to load models: ${err.message}`, 'error');
-        setStatus('error');
-        btnLoad.disabled = false;
-      }
+      log(`Failed to load models: ${err.message}`, 'error');
+      setStatus('error');
+      btnLoad.disabled = false;
+      setBusy(false);
+      return;
     }
   }
+
+  backendBadge.textContent = activeBackend.toUpperCase();
+  backendBadge.className   = `backend-badge ${activeBackend}`;
+  log(`Models ready — backend: ${activeBackend}`, 'ok');
+  setStatus('ready');
+  btnPickImages.disabled = false;
+  setBusy(false);
 });
 
-// ── Pick images ──────────────────────────────────────────────────────────────
+// ── Pick folder ───────────────────────────────────────────────────────────
 btnPickImages.addEventListener('click', async () => {
   try {
-    const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-    // Revoke old object URLs
+    dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+
     files.forEach(f => URL.revokeObjectURL(f.url));
     files = [];
     thumbGrid.innerHTML = '';
 
     for await (const [name, handle] of dirHandle.entries()) {
       if (handle.kind !== 'file') continue;
-      if (!/\.(jpe?g|png|webp|avif)$/i.test(name)) continue;
+      if (!/\.(jpe?g|png|webp|bmp)$/i.test(name)) continue;
       const file = await handle.getFile();
       const url  = URL.createObjectURL(file);
       const idx  = files.length;
       files.push({ id: name, file, url });
 
-      // Thumbnail
       const item = document.createElement('div');
       item.className = 'thumb-item';
       item.id = `thumb-${idx}`;
@@ -503,7 +521,7 @@ btnPickImages.addEventListener('click', async () => {
       thumbGrid.appendChild(item);
     }
 
-    log(`Loaded ${files.length} image(s)`, 'ok');
+    log(`Found ${files.length} image(s) in "${dirHandle.name}"`, 'ok');
     if (files.length > 0) {
       btnIndex.disabled = false;
       selectImage(0);
@@ -514,30 +532,27 @@ btnPickImages.addEventListener('click', async () => {
   }
 });
 
-// ── Select image ─────────────────────────────────────────────────────────────
+// ── Select image ──────────────────────────────────────────────────────────
 function selectImage(idx) {
-  // Deselect previous
-  if (selectedIdx >= 0) {
+  if (selectedIdx >= 0)
     document.getElementById(`thumb-${selectedIdx}`)?.classList.remove('selected');
-  }
   selectedIdx = idx;
   document.getElementById(`thumb-${idx}`)?.classList.add('selected');
 
   const { id, url } = files[idx];
   selectedName.textContent = id;
-
-  // Show image in detail panel
-  imgWrap.innerHTML = `<img id="detailImg" src="${url}" style="width:100%;height:100%;object-fit:contain">
-                       <canvas id="segCanvas" style="display:none;position:absolute;inset:0;width:100%;height:100%"></canvas>`;
+  imgWrap.innerHTML = `
+    <img id="detailImg" src="${url}" style="width:100%;height:100%;object-fit:contain">
+    <canvas id="segCanvas" style="display:none;position:absolute;inset:0;width:100%;height:100%"></canvas>`;
   detailResults.innerHTML = '<div style="color:var(--muted);font-size:11px;margin-top:20px;text-align:center">Run embed or segment to see results</div>';
 
   btnEmbed.disabled   = false;
   btnSegment.disabled = false;
 }
 
-// ── Embed full image ──────────────────────────────────────────────────────────
+// ── Embed full image ───────────────────────────────────────────────────────
 btnEmbed.addEventListener('click', async () => {
-  if (selectedIdx < 0 || !vs) return;
+  if (selectedIdx < 0) return;
   const { id, file } = files[selectedIdx];
   setBusy(true);
   btnEmbed.disabled = true;
@@ -545,9 +560,8 @@ btnEmbed.addEventListener('click', async () => {
 
   try {
     const t0  = performance.now();
-    const emb = await vs.embedRegion(file);
+    const emb = await embedImage(file, undefined, modelOpts());
     const ms  = (performance.now() - t0).toFixed(0);
-
     log(`Embedded in ${ms}ms — dim: ${emb.length}`, 'ok');
     showEmbeddingResult(emb, ms);
   } catch (err) {
@@ -560,8 +574,7 @@ btnEmbed.addEventListener('click', async () => {
 });
 
 function showEmbeddingResult(emb, ms) {
-  // Show first 16 values + norm
-  const norm = Math.sqrt(emb.reduce((s,v) => s + v*v, 0));
+  const norm    = Math.sqrt(emb.reduce((s, v) => s + v * v, 0));
   const preview = Array.from(emb.slice(0, 16)).map(v => v.toFixed(4)).join(', ') + ', …';
   detailResults.innerHTML = `
     <div class="result-block">
@@ -574,9 +587,9 @@ function showEmbeddingResult(emb, ms) {
     </div>`;
 }
 
-// ── Segment + embed ───────────────────────────────────────────────────────────
+// ── Segment + embed ────────────────────────────────────────────────────────
 btnSegment.addEventListener('click', async () => {
-  if (selectedIdx < 0 || !vs) return;
+  if (selectedIdx < 0) return;
   const { id, file } = files[selectedIdx];
   setBusy(true);
   btnSegment.disabled = true;
@@ -584,23 +597,19 @@ btnSegment.addEventListener('click', async () => {
 
   try {
     const t0   = performance.now();
-    let tSeg   = t0;
-    const segs = await vs.indexImage({ id, file }, {
-      onSegmentationDone: (n) => {
-        const s = ((performance.now() - t0) / 1000).toFixed(1);
-        tSeg = performance.now();
-        log(`Segmentation done — ${n} segments in ${s}s (embedding…)`);
-      },
-      onEmbeddingDone: (n) => {
-        const s = ((performance.now() - tSeg) / 1000).toFixed(1);
-        log(`Embedding done — ${n} vectors in ${s}s`);
-      },
-    });
-    const ms   = (performance.now() - t0).toFixed(0);
+    const detections = await segmentImage(file, modelOpts());
+    const tSeg = performance.now();
+    log(`Segmentation done — ${detections.length} segments in ${((tSeg - t0) / 1000).toFixed(1)}s, embedding…`);
 
-    log(`Done in ${(ms/1000).toFixed(1)}s — ${segs.length} segments`, 'ok');
+    const bitmap     = await createImageBitmap(file);
+    const embeddings = await embedBatch(bitmap, detections.map(d => d.bbox), modelOpts());
+    bitmap.close();
+    const ms = (performance.now() - t0).toFixed(0);
+    log(`Embedding done — ${embeddings.length} vectors in ${((performance.now() - tSeg) / 1000).toFixed(1)}s`, 'ok');
+    log(`Done in ${(ms / 1000).toFixed(1)}s — ${detections.length} segments`, 'ok');
 
-    // Update thumbnail badge
+    const segs = detections.map((d, i) => ({ bbox: d.bbox, area: d.area, embedding: embeddings[i] }));
+
     const badge = document.getElementById(`segcount-${selectedIdx}`);
     if (badge) badge.textContent = segs.length;
     document.getElementById(`thumb-${selectedIdx}`)?.classList.add('done');
@@ -618,18 +627,18 @@ btnSegment.addEventListener('click', async () => {
 
 function showSegmentResults(segs, ms) {
   const rows = segs.slice(0, 8).map((s, i) => {
-    const [x,y,w,h] = s.bbox.map(v => v.toFixed(3));
-    const norm = Math.sqrt(s.embedding.reduce((a,v) => a+v*v, 0));
+    const [x, y, w, h] = s.bbox.map(v => v.toFixed(3));
+    const norm = Math.sqrt(s.embedding.reduce((a, v) => a + v * v, 0));
     return `<div style="display:grid;grid-template-columns:20px 1fr 60px 60px;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px">
       <span style="color:var(--muted)">${i}</span>
       <span style="color:var(--text-dim)">[${x}, ${y}, ${w}, ${h}]</span>
-      <span>area <span style="color:var(--accent)">${(s.area*100).toFixed(1)}%</span></span>
+      <span>area <span style="color:var(--accent)">${(s.area * 100).toFixed(1)}%</span></span>
       <span>‖emb‖ <span style="color:var(--accent2)">${norm.toFixed(3)}</span></span>
     </div>`;
   }).join('');
-
-  const more = segs.length > 8 ? `<div style="font-size:10px;color:var(--muted);margin-top:6px">… and ${segs.length - 8} more</div>` : '';
-
+  const more = segs.length > 8
+    ? `<div style="font-size:10px;color:var(--muted);margin-top:6px">… and ${segs.length - 8} more</div>`
+    : '';
   detailResults.innerHTML = `
     <div class="result-block">
       <div class="result-title">Segments — ${ms}ms — ${segs.length} total</div>
@@ -644,33 +653,25 @@ function drawSegments(segs) {
 
   function render() {
     const img = document.getElementById('detailImg');
-    if (!img || !img.naturalWidth) {
-      // Image not decoded yet — wait a frame and retry
-      requestAnimationFrame(render);
-      return;
-    }
+    if (!img?.naturalWidth) { requestAnimationFrame(render); return; }
 
     const cW = imgWrap.offsetWidth;
     const cH = imgWrap.offsetHeight;
     canvas.width  = cW;
     canvas.height = cH;
 
-    // Compute the actual rendered rect of the image inside the container
-    // (object-fit: contain centres it with letterbox bars)
     const scale = Math.min(cW / img.naturalWidth, cH / img.naturalHeight);
     const imgW  = img.naturalWidth  * scale;
     const imgH  = img.naturalHeight * scale;
     const offX  = (cW - imgW) / 2;
     const offY  = (cH - imgH) / 2;
 
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, cW, cH);
-
+    const ctx  = canvas.getContext('2d');
     const hues = [120, 180, 60, 300, 30, 210, 0, 270];
+    ctx.clearRect(0, 0, cW, cH);
     segs.forEach((s, i) => {
       const [x, y, w, h] = s.bbox;
-      const hue = hues[i % hues.length];
-      ctx.strokeStyle = `hsla(${hue}, 90%, 60%, 0.8)`;
+      ctx.strokeStyle = `hsla(${hues[i % hues.length]}, 90%, 60%, 0.8)`;
       ctx.lineWidth   = 1.5;
       ctx.strokeRect(offX + x * imgW, offY + y * imgH, w * imgW, h * imgH);
     });
@@ -679,63 +680,55 @@ function drawSegments(segs) {
   requestAnimationFrame(render);
 }
 
-// ── Bulk index all ────────────────────────────────────────────────────────────
+// ── Bulk index ─────────────────────────────────────────────────────────────
 btnIndex.addEventListener('click', async () => {
-  if (!vs || files.length === 0) return;
+  if (!dirHandle || files.length === 0) return;
   setBusy(true);
   btnIndex.disabled = true;
-  btnSave.disabled  = true;
   index = null;
 
   const t0 = performance.now();
-  log(`Starting bulk index of ${files.length} images…`);
+  log(`Starting bulk index of "${dirHandle.name}"…`);
 
   try {
-    index = await vs.buildIndex(files, {
-      onProgress: (done, total) => {
-        const pct  = (done / total) * 100;
-        const name = files[done - 1].id;
-        progressFill.style.width  = pct + '%';
-        progressLabel.textContent = `${done} / ${total} — ${name}`;
-        document.getElementById(`thumb-${done-1}`)?.classList.add('done');
+    index = await buildIndex(dirHandle, {
+      ...modelOpts(),
+      onProgress: (p) => {
+        if (p.phase === 'indexing') {
+          const pct = (p.completed / p.total) * 100;
+          progressFill.style.width  = pct + '%';
+          progressLabel.textContent = `${p.completed} / ${p.total}${p.currentFile ? ` — ${p.currentFile}` : ''}`;
+          if (p.currentFile) {
+            const idx = files.findIndex(f => f.id === p.currentFile);
+            if (idx >= 0) document.getElementById(`thumb-${idx}`)?.classList.add('done');
+          }
+        } else {
+          progressLabel.textContent = p.phase;
+          log(`phase: ${p.phase}`);
+        }
       },
-      imageProgress: (() => {
-        let tBulkSeg = performance.now();
-        return {
-          onSegmentationDone: (n) => {
-            const s = ((performance.now() - tBulkSeg) / 1000).toFixed(1);
-            tBulkSeg = performance.now();
-            log(`  segmentation — ${n} segments in ${s}s, embedding…`);
-          },
-          onEmbeddingDone: (n) => {
-            const s = ((performance.now() - tBulkSeg) / 1000).toFixed(1);
-            tBulkSeg = performance.now();
-            log(`  embedding — ${n} vectors in ${s}s`);
-          },
-        };
-      })(),
     });
 
-    // Update seg counts on thumbnails
     let totalSegments = 0;
     for (const img of index.images) {
       totalSegments += img.segments.length;
-      const fileIdx = files.findIndex(f => f.id === img.imageId);
-      if (fileIdx >= 0) {
-        const badge = document.getElementById(`segcount-${fileIdx}`);
+      const idx = files.findIndex(f => f.id === img.imageId);
+      if (idx >= 0) {
+        const badge = document.getElementById(`segcount-${idx}`);
         if (badge) badge.textContent = img.segments.length;
+        document.getElementById(`thumb-${idx}`)?.classList.add('done');
       }
     }
 
     const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
-    log(`Indexed ${files.length} images → ${totalSegments} segments in ${elapsed}s`, 'ok');
+    log(`Indexed ${index.images.length} images → ${totalSegments} segments in ${elapsed}s`, 'ok');
+    progressFill.style.width  = '100%';
+    progressLabel.textContent = `Done — ${totalSegments} segments`;
 
-    statImages.textContent   = files.length;
+    statImages.textContent   = index.images.length;
     statSegments.textContent = totalSegments;
     statTime.textContent     = elapsed;
-    statAvg.textContent      = (totalSegments / files.length).toFixed(1);
-    progressLabel.textContent= `Done — ${totalSegments} segments`;
-    btnSave.disabled = false;
+    statAvg.textContent      = (totalSegments / index.images.length).toFixed(1);
   } catch (err) {
     log(`Indexing failed: ${err.message}`, 'error');
     console.error(err);
@@ -744,18 +737,6 @@ btnIndex.addEventListener('click', async () => {
 
   btnIndex.disabled = false;
   setBusy(false);
-});
-
-// ── Save ─────────────────────────────────────────────────────────────────────
-btnSave.addEventListener('click', async () => {
-  if (!index) return;
-  try {
-    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
-    await index.serialize(dir);
-    log(`Index saved to "${dir.name}/.visual-search/"`, 'ok');
-  } catch (err) {
-    if (err.name !== 'AbortError') log(`Save failed: ${err.message}`, 'error');
-  }
 });
 
 log('Ready. Load models to begin.');
