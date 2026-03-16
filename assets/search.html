@@ -403,44 +403,46 @@
 <div class="log-panel" id="logPanel"></div>
 
 <script type="module">
-import { loadVisualSearch } from '/src/visual-search.ts';
-import { deserializeIndex } from '/src/index-store.ts';
+import { loadIndex } from '/src/search/load-index.js';
+import { embedImage } from '/src/embedding/embed.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let vs           = null;
 let index        = null;
-let imageDir     = null;   // FileSystemDirectoryHandle for the indexed image folder
-let queryFile    = null;   // currently loaded query File
-let queryUrl     = null;   // object URL for queryFile
-let crop         = null;   // { x, y, w, h } normalised, or null = full image
+let imageDir     = null;
+let queryFile    = null;
+let queryUrl     = null;
+let crop         = null;
 let isDragging   = false;
 let dragStart    = null;
-let indexedFiles = {};     // imageId → object URL (for result thumbnails)
+let indexedFiles = {};
+
+const embedderUrl  = () => document.getElementById('embedderUrl').value.trim();
+const indexOpts    = () => ({ embedderUrl: embedderUrl(), executionProviders: ['webgpu', 'wasm'] });
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
-const statusDot      = document.getElementById('statusDot');
-const btnLoad        = document.getElementById('btnLoad');
-const btnLoadIndex   = document.getElementById('btnLoadIndex');
-const btnPickQuery   = document.getElementById('btnPickQuery');
-const btnClearCrop   = document.getElementById('btnClearCrop');
-const btnSearchFull  = document.getElementById('btnSearchFull');
-const btnSearchCrop  = document.getElementById('btnSearchCrop');
-const queryImg       = document.getElementById('queryImg');
-const queryWrap      = document.getElementById('queryWrap');
-const cropCanvas     = document.getElementById('cropCanvas');
+const statusDot        = document.getElementById('statusDot');
+const btnLoad          = document.getElementById('btnLoad');
+const btnLoadIndex     = document.getElementById('btnLoadIndex');
+const btnPickQuery     = document.getElementById('btnPickQuery');
+const btnClearCrop     = document.getElementById('btnClearCrop');
+const btnSearchFull    = document.getElementById('btnSearchFull');
+const btnSearchCrop    = document.getElementById('btnSearchCrop');
+const queryImg         = document.getElementById('queryImg');
+const queryWrap        = document.getElementById('queryWrap');
+const cropCanvas       = document.getElementById('cropCanvas');
 const queryPlaceholder = document.getElementById('queryPlaceholder');
-const cropInfo       = document.getElementById('cropInfo');
-const indexedGrid    = document.getElementById('indexedGrid');
-const resultsList    = document.getElementById('resultsList');
-const resultCount    = document.getElementById('resultCount');
-const topKSlider     = document.getElementById('topKSlider');
-const topKLabel      = document.getElementById('topKLabel');
-const logPanel       = document.getElementById('logPanel');
+const cropInfo         = document.getElementById('cropInfo');
+const indexedGrid      = document.getElementById('indexedGrid');
+const resultsList      = document.getElementById('resultsList');
+const resultCount      = document.getElementById('resultCount');
+const topKSlider       = document.getElementById('topKSlider');
+const topKLabel        = document.getElementById('topKLabel');
+const logPanel         = document.getElementById('logPanel');
 
 // ── Log ───────────────────────────────────────────────────────────────────────
 function log(msg, level = 'info') {
-  const time  = new Date().toTimeString().slice(0, 8);
-  const el    = document.createElement('div');
+  const time = new Date().toTimeString().slice(0, 8);
+  const el   = document.createElement('div');
   el.className = 'log-entry';
   el.innerHTML = `<span class="log-time">${time}</span><span class="log-level ${level}">${level}</span><span class="log-msg">${msg}</span>`;
   logPanel.appendChild(el);
@@ -452,36 +454,21 @@ function setBusy(b)   { setStatus(b ? 'busy' : 'ready'); }
 // ── topK slider ───────────────────────────────────────────────────────────────
 topKSlider.addEventListener('input', () => { topKLabel.textContent = topKSlider.value; });
 
-// ── Load models ───────────────────────────────────────────────────────────────
-btnLoad.addEventListener('click', async () => {
-  btnLoad.disabled = true;
-  setBusy(true);
-  const segUrl = document.getElementById('segmenterUrl').value.trim();
-  const embUrl = document.getElementById('embedderUrl').value.trim();
-  log(`Loading models…`);
-  try {
-    vs = await loadVisualSearch({ segmenterUrl: segUrl, embedderUrl: embUrl, executionProviders: ['webgpu', 'wasm'] });
-    log('Models ready', 'ok');
-    setStatus('ready');
-    btnLoadIndex.disabled  = false;
-    btnPickQuery.disabled  = false;
-  } catch (err) {
-    log(`Failed: ${err.message}`, 'error');
-    setStatus('error');
-    btnLoad.disabled = false;
-  }
+btnLoad.addEventListener('click', () => {
+  log(`Models will load on first use — embedder: ${embedderUrl()}`, 'ok');
+  setStatus('ready');
+  btnLoadIndex.disabled = false;
+  btnPickQuery.disabled = false;
 });
 
 // ── Load index ────────────────────────────────────────────────────────────────
 btnLoadIndex.addEventListener('click', async () => {
   try {
-    // User picks the folder that CONTAINS the .visual-search directory
-    // (same folder they picked when saving in test.html)
     const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
     log(`Loading index from "${dirHandle.name}"…`);
     setBusy(true);
 
-    index    = await deserializeIndex(dirHandle);
+    index    = await loadIndex(dirHandle, indexOpts());
     imageDir = dirHandle;
 
     const totalSegs = index.images.reduce((n, img) => n + img.segments.length, 0);
@@ -492,10 +479,10 @@ btnLoadIndex.addEventListener('click', async () => {
     document.getElementById('metaModel').textContent    = '—';
     document.getElementById('indexMeta').style.display  = 'flex';
     document.getElementById('indexMeta').style.flexDirection = 'column';
-    document.getElementById('indexMeta').style.gap = '3px';
+    document.getElementById('indexMeta').style.gap      = '3px';
 
-    // Build thumbnail grid from indexed images
     await buildIndexedGrid();
+    updateSearchButtons();
     setBusy(false);
   } catch (err) {
     log(`Failed to load index: ${err.message}`, 'error');
@@ -505,20 +492,17 @@ btnLoadIndex.addEventListener('click', async () => {
 
 async function buildIndexedGrid() {
   indexedGrid.innerHTML = '';
-  // Revoke old URLs
   Object.values(indexedFiles).forEach(u => URL.revokeObjectURL(u));
   indexedFiles = {};
 
   for (const img of index.images) {
     let url = null;
     try {
-      const fh   = await imageDir.getFileHandle(img.imageId);
+      const fh = await imageDir.getFileHandle(img.imageId);
       const file = await fh.getFile();
       url = URL.createObjectURL(file);
       indexedFiles[img.imageId] = url;
-    } catch {
-      // File not found in this dir — skip thumbnail but keep entry
-    }
+    } catch { /* file not found in dir — skip thumbnail */ }
 
     const item = document.createElement('div');
     item.className = 'idx-thumb';
@@ -527,7 +511,7 @@ async function buildIndexedGrid() {
       item.innerHTML = `<img src="${url}" loading="lazy"><span class="iname">${img.imageId}</span>`;
       item.addEventListener('click', () => setQueryFromUrl(url, img.imageId));
     } else {
-      item.innerHTML = `<span class="iname" style="color:var(--muted);font-size:9px;position:absolute;top:4px;left:4px;">${img.imageId}</span>`;
+      item.innerHTML = `<span class="iname" style="color:var(--muted);font-size:9px;position:absolute;top:4px;left:4px">${img.imageId}</span>`;
       item.style.opacity = '0.4';
     }
     indexedGrid.appendChild(item);
@@ -535,8 +519,8 @@ async function buildIndexedGrid() {
 }
 
 // ── Pick query image ──────────────────────────────────────────────────────────
-btnPickQuery.addEventListener('click', async () => {
-  const input = document.createElement('input');
+btnPickQuery.addEventListener('click', () => {
+  const input  = document.createElement('input');
   input.type   = 'file';
   input.accept = 'image/*';
   input.onchange = async () => {
@@ -555,19 +539,18 @@ async function setQueryFromUrl(url, name) {
   queryFile = null;
   crop      = null;
 
-  queryImg.src     = url;
+  queryImg.src           = url;
   queryImg.style.display = 'block';
   queryPlaceholder.style.display = 'none';
 
-  // Try to get actual File from imageDir if it's an indexed image
+  // Try to get a real File from imageDir if this is an indexed image
   if (imageDir) {
     try {
       const fh = await imageDir.getFileHandle(name);
       queryFile = await fh.getFile();
-    } catch { /* not in indexed dir, will use blob url */ }
+    } catch { /* not in indexed dir */ }
   }
 
-  // If still no File, create one from the blob URL
   if (!queryFile) {
     const res  = await fetch(url);
     const blob = await res.blob();
@@ -578,7 +561,6 @@ async function setQueryFromUrl(url, name) {
   updateSearchButtons();
   log(`Query image: ${name}`);
 
-  // Highlight in indexed grid
   document.querySelectorAll('.idx-thumb').forEach(el => {
     el.classList.toggle('active', el.title === name);
   });
@@ -588,7 +570,6 @@ async function setQueryFromUrl(url, name) {
 const ctx = cropCanvas.getContext('2d');
 
 function getImageRect() {
-  // object-fit: contain layout
   const cW = queryWrap.offsetWidth;
   const cH = queryWrap.offsetHeight;
   if (!queryImg.naturalWidth) return { offX: 0, offY: 0, imgW: cW, imgH: cH };
@@ -624,21 +605,17 @@ function redrawCrop() {
   const rw = crop.w * imgW;
   const rh = crop.h * imgH;
 
-  // Dim outside crop
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
   ctx.fillRect(0, 0, W, H);
   ctx.clearRect(rx, ry, rw, rh);
-
-  // Crop border
   ctx.strokeStyle = '#c8f135';
   ctx.lineWidth   = 1.5;
   ctx.strokeRect(rx, ry, rw, rh);
 
-  // Corner handles
   const hs = 6;
   ctx.fillStyle = '#c8f135';
-  [[rx,ry],[rx+rw,ry],[rx,ry+rh],[rx+rw,ry+rh]].forEach(([x,y]) => {
-    ctx.fillRect(x - hs/2, y - hs/2, hs, hs);
+  [[rx, ry], [rx + rw, ry], [rx, ry + rh], [rx + rw, ry + rh]].forEach(([x, y]) => {
+    ctx.fillRect(x - hs / 2, y - hs / 2, hs, hs);
   });
 }
 
@@ -658,13 +635,13 @@ cropCanvas.addEventListener('mousedown', e => {
 
 cropCanvas.addEventListener('mousemove', e => {
   if (!isDragging) return;
-  const pos  = getEventPos(e);
-  const a    = canvasToNorm(dragStart.x, dragStart.y);
-  const b    = canvasToNorm(pos.x, pos.y);
-  const x    = Math.min(a.x, b.x);
-  const y    = Math.min(a.y, b.y);
-  const w    = Math.abs(a.x - b.x);
-  const h    = Math.abs(a.y - b.y);
+  const pos = getEventPos(e);
+  const a   = canvasToNorm(dragStart.x, dragStart.y);
+  const b   = canvasToNorm(pos.x, pos.y);
+  const x   = Math.min(a.x, b.x);
+  const y   = Math.min(a.y, b.y);
+  const w   = Math.abs(a.x - b.x);
+  const h   = Math.abs(a.y - b.y);
   if (w > 0.01 && h > 0.01) crop = { x, y, w, h };
   redrawCrop();
 });
@@ -672,26 +649,24 @@ cropCanvas.addEventListener('mousemove', e => {
 cropCanvas.addEventListener('mouseup', () => {
   isDragging = false;
   if (crop) {
-    cropInfo.textContent = `crop: [${crop.x.toFixed(3)}, ${crop.y.toFixed(3)}, ${crop.w.toFixed(3)}, ${crop.h.toFixed(3)}]`;
-    btnClearCrop.disabled    = false;
-    btnSearchCrop.disabled   = false;
+    cropInfo.textContent  = `crop: [${crop.x.toFixed(3)}, ${crop.y.toFixed(3)}, ${crop.w.toFixed(3)}, ${crop.h.toFixed(3)}]`;
+    btnClearCrop.disabled  = false;
+    btnSearchCrop.disabled = false;
   }
 });
 
-btnClearCrop.addEventListener('click', () => {
-  clearCropDraw();
-});
+btnClearCrop.addEventListener('click', clearCropDraw);
 
 function clearCropDraw() {
   crop = null;
   redrawCrop();
-  cropInfo.textContent      = '';
-  btnClearCrop.disabled     = true;
-  btnSearchCrop.disabled    = true;
+  cropInfo.textContent   = '';
+  btnClearCrop.disabled  = true;
+  btnSearchCrop.disabled = true;
 }
 
 function updateSearchButtons() {
-  const ready = !!(vs && index && queryFile);
+  const ready = !!(index && queryFile);
   btnSearchFull.disabled = !ready;
   btnSearchCrop.disabled = !(ready && crop);
 }
@@ -704,15 +679,15 @@ btnSearchFull.addEventListener('click', () => runSearch(null));
 btnSearchCrop.addEventListener('click', () => runSearch(crop ? [crop.x, crop.y, crop.w, crop.h] : null));
 
 async function runSearch(bbox) {
-  if (!vs || !index || !queryFile) return;
+  if (!index || !queryFile) return;
   setBusy(true);
   const topK   = parseInt(topKSlider.value);
-  const region = bbox ? `crop [${bbox.map(v=>v.toFixed(2)).join(', ')}]` : 'full image';
+  const region = bbox ? `crop [${bbox.map(v => v.toFixed(2)).join(', ')}]` : 'full image';
   log(`Searching — ${region}, top-${topK}…`);
 
   try {
     const t0      = performance.now();
-    const results = await vs.search(queryFile, bbox ?? undefined, index, { topK });
+    const results = await index.query(queryFile, bbox ?? undefined, { topK });
     const ms      = (performance.now() - t0).toFixed(0);
     log(`Done in ${ms}ms — ${results.length} results`, 'ok');
     renderResults(results);
@@ -733,24 +708,21 @@ function renderResults(results) {
     const card = document.createElement('div');
     card.className = 'result-card';
 
-    // Thumbnail with bbox overlay
     const thumbUrl = indexedFiles[r.imageId] ?? null;
-    const thumbId  = `rthumb-${i}`;
 
     card.innerHTML = `
-      <div class="result-thumb" id="${thumbId}">
+      <div class="result-thumb" id="rthumb-${i}">
         ${thumbUrl ? `<img src="${thumbUrl}" style="display:none">` : ''}
         <canvas></canvas>
       </div>
       <div class="result-meta">
         <div class="result-score">${(r.score * 100).toFixed(1)}<span style="font-size:11px;color:var(--muted)">%</span></div>
         <div class="result-id">${r.imageId}</div>
-        <div class="result-bbox">[${r.bbox.map(v=>v.toFixed(2)).join(', ')}] &nbsp; area ${(r.area*100).toFixed(1)}%</div>
+        <div class="result-bbox">[${r.bbox.map(v => v.toFixed(2)).join(', ')}] &nbsp; area ${(r.area * 100).toFixed(1)}%</div>
       </div>`;
 
     resultsList.appendChild(card);
 
-    // Draw bbox on thumbnail canvas after image loads
     const thumb  = card.querySelector('.result-thumb');
     const canvas = card.querySelector('canvas');
     const img    = card.querySelector('img');
@@ -761,15 +733,9 @@ function renderResults(results) {
       canvas.width  = W;
       canvas.height = H;
       const c = canvas.getContext('2d');
-
-      if (img && img.naturalWidth) {
+      if (img?.naturalWidth) {
         const [x, y, w, h] = r.bbox;
-        const srcX = x * img.naturalWidth;
-        const srcY = y * img.naturalHeight;
-        const srcW = w * img.naturalWidth;
-        const srcH = h * img.naturalHeight;
-        // Draw just the segment crop, scaled to fill the thumbnail
-        c.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, W, H);
+        c.drawImage(img, x * img.naturalWidth, y * img.naturalHeight, w * img.naturalWidth, h * img.naturalHeight, 0, 0, W, H);
       } else {
         c.fillStyle = '#1a1a1a';
         c.fillRect(0, 0, W, H);
