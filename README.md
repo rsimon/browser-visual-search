@@ -10,7 +10,7 @@ npm install browser-visual-search
 ```
 
 ## Usage
-```typescript
+```ts
 import { buildIndex, loadIndex } from 'browser-visual-search';
 
 // Build (and auto-save) an index from a directory
