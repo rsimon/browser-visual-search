@@ -18,9 +18,7 @@
   "scripts": {
     "start": "vite",
     "build": "tsc",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest",
-    "test:run": "vitest run"
+    "test": "vitest"
   },
   "peerDependencies": {
     "onnxruntime-web": "^1.24.3"

@@ -6,7 +6,7 @@ const CLIP_INPUT_SIZE = 224;
 
 let embedderSession: ort.InferenceSession | null = null;
 
-const loadEmbedder = async (url: string, providers: string[] = ['webpu', 'wasm']): Promise<ort.InferenceSession> => {
+const loadEmbedder = async (url: string, providers: string[] = ['webgpu', 'wasm']): Promise<ort.InferenceSession> => {
   if (!embedderSession)
     embedderSession = await ort.InferenceSession.create(url, { executionProviders: providers });
 

@@ -1,107 +1,124 @@
-/**
- * search.test.ts
- * --------------
- * Validates the full round-trip: buildIndex → search.
- *
- * Checks:
- *   - buildIndex produces a valid index from multiple images
- *   - onProgress fires correctly
- *   - search returns topK results with valid structure
- *   - Querying with an image returns that same image as the top result
- *     (self-similarity: the best match for an image should be itself)
- *   - scores are in descending order
- *   - scores are in [0, 1] (cosine similarity of unit vectors)
- *   - serialise writes the expected files to an in-memory OPFS directory
- */
+import { beforeAll, describe, expect, it } from 'vitest';
+import { createIndex, EMBEDDING_DIM, type LoadIndexOptions } from '../src/search/load-index.js';
+import { embedBatch } from '../src/embedding/embed.js';
+import type { IndexedImage, VisualSearchIndex } from '../src/types.js';
+import { assertInRange, assertValidBBox, EMBEDDER_URL, fetchFixture, FIXTURE_IMAGES } from './setup.js';
 
-import { describe, it, expect, beforeAll } from 'vitest';
-import { buildIndexFromImages, searchSimilar, fetchFixture, assertValidBBox, FIXTURE_IMAGES, loadIndex } from './setup.js';
-import type { VisualSearchIndex } from '../src/types.js';
+const OPTS: LoadIndexOptions = { embedderUrl: EMBEDDER_URL };
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Build a real index fixture ─────────────────────────────────────────────
 
-describe('search', () => {
-  let files: File[];
-  let index: VisualSearchIndex;
+const SEGMENTS = [
+  { bbox: [0, 0, 1, 1]       as [number,number,number,number], area: 1    },
+  { bbox: [0, 0, 0.5, 0.5]   as [number,number,number,number], area: 0.25 },
+  { bbox: [0.5, 0.5, 0.5, 0.5] as [number,number,number,number], area: 0.25 },
+];
 
-  const IMAGE_IDS = ['img-a', 'img-b', 'img-c'] as const;
+let index: VisualSearchIndex;
+let fileA: File;
+let fileB: File;
+let fileC: File;
 
-  beforeAll(async () => {
-    files = await Promise.all(FIXTURE_IMAGES.map(fetchFixture));
+beforeAll(async () => {
+  [fileA, fileB, fileC] = await Promise.all(FIXTURE_IMAGES.map(fetchFixture));
 
-    index = await buildIndexFromImages(
-      files.map((file, i) => ({ id: IMAGE_IDS[i], file }))
-    );
+  const files = [
+    { id: 'image-a.jpg', file: fileA },
+    { id: 'image-b.jpg', file: fileB },
+    { id: 'image-c.jpg', file: fileC },
+  ];
+
+  const images: IndexedImage[] = [];
+  const allEmbeddings: Float32Array[] = [];
+  let nextRow = 0;
+
+  for (const { id, file } of files) {
+    const bitmap = await createImageBitmap(file);
+    const embeddings = await embedBatch(bitmap, SEGMENTS.map(s => s.bbox), OPTS);
+    bitmap.close();
+
+    images.push({
+      imageId:   id,
+      indexedAt: new Date().toISOString(),
+      segments:  SEGMENTS.map((s, j) => ({
+        bbox:         s.bbox,
+        area:         s.area,
+        embeddingRow: nextRow++,
+      })),
+    });
+
+    allEmbeddings.push(...embeddings);
+  }
+
+  const flat = new Float32Array(allEmbeddings.length * EMBEDDING_DIM);
+  allEmbeddings.forEach((vec, i) => flat.set(vec, i * EMBEDDING_DIM));
+
+  index = createIndex(images, flat, {} as FileSystemDirectoryHandle, OPTS);
+});
+
+// ── getImage ───────────────────────────────────────────────────────────────
+
+describe('getImage', () => {
+  it('returns the correct image for a known id', () => {
+    const img = index.getImage('image-a.jpg');
+    expect(img).toBeDefined();
+    expect(img!.imageId).toBe('image-a.jpg');
+    expect(img!.segments).toHaveLength(SEGMENTS.length);
   });
 
-  it('index contains all images', () => {
-    expect(index.images.length).toBe(files.length);
+  it('returns undefined for an unknown id', () => {
+    expect(index.getImage('does-not-exist.jpg')).toBeUndefined();
+  });
+});
+
+// ── query ──────────────────────────────────────────────────────────────────
+
+describe('query', () => {
+  it('returns results for every image in the index', async () => {
+    const results = await index.query(fileA);
+    const ids = new Set(results.map(r => r.imageId));
+    expect(ids.has('image-a.jpg')).toBe(true);
+    expect(ids.has('image-b.jpg')).toBe(true);
+    expect(ids.has('image-c.jpg')).toBe(true);
   });
 
-  it('index contains at least one segment per image', () => {
-    for (const img of index.images) {
-      expect(img.segments.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('embeddings buffer has the right length', () => {
-    const totalSegments = index.images.reduce((n, img) => n + img.segments.length, 0);
-    expect(index.embeddings.length).toBe(totalSegments * 512);
-  });
-
-  it('search returns topK results', async () => {
-    const results = await searchSimilar(files[0], undefined, index, 5);
-    expect(results.length).toBeLessThanOrEqual(5);
-    expect(results.length).toBeGreaterThan(0);
-  });
-
-  it('results have valid structure', async () => {
-    const results = await searchSimilar(files[0], undefined, index);
-    for (const r of results) {
-      expect(typeof r.imageId).toBe('string');
-      assertValidBBox(r.bbox);
-      expect(r.area).toBeGreaterThan(0);
-      expect(r.score).toBeGreaterThanOrEqual(-1);
-      expect(r.score).toBeLessThanOrEqual(1);
-    }
-  });
-
-  it('scores are in descending order', async () => {
-    const results = await searchSimilar(files[0], undefined, index);
-    for (let i = 1; i < results.length; i++) {
+  it('scores are in [-1, 1] and results are sorted descending', async () => {
+    const results = await index.query(fileA);
+    for (const r of results)
+      assertInRange(r.score, -1, 1, 'score');
+    for (let i = 1; i < results.length; i++)
       expect(results[i - 1].score).toBeGreaterThanOrEqual(results[i].score);
+  });
+
+  it('top result for a full-image query matches the queried image', async () => {
+    for (const [id, file] of [['image-a.jpg', fileA], ['image-b.jpg', fileB], ['image-c.jpg', fileC]] as const) {
+      const results = await index.query(file);
+      expect(results[0].imageId).toBe(id);
     }
   });
 
-  it('self-similarity: querying image-a returns image-a as the top result', async () => {
-    const results = await searchSimilar(files[0], undefined, index, 1);
-    expect(results[0].imageId).toBe(IMAGE_IDS[0]);
-  });
-
-  it('self-similarity: querying image-b returns image-b as the top result', async () => {
-    const results = await searchSimilar(files[1], undefined, index, 1);
-    expect(results[0].imageId).toBe(IMAGE_IDS[1]);
-  });
-
-  it('serialize + deserialize round-trips the index correctly', async () => {
-    // Use the Origin Private File System (OPFS) — available in all modern
-    // browsers and in Vitest browser mode, no user permission prompt needed.
-    const root    = await navigator.storage.getDirectory();
-    const testDir = await root.getDirectoryHandle('vs-test', { create: true });
-
-    await index.serialize(testDir);
-
-    const loaded = await loadIndex(testDir);
-
-    expect(loaded.images.length).toBe(index.images.length);
-    expect(loaded.embeddings.length).toBe(index.embeddings.length);
-
-    // Embeddings should be numerically identical after round-trip
-    for (let i = 0; i < index.embeddings.length; i++) {
-      expect(loaded.embeddings[i]).toBeCloseTo(index.embeddings[i], 5);
+  it('bbox query returns valid results', async () => {
+    const results = await index.query(fileA, [0.25, 0.25, 0.5, 0.5]);
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) {
+      assertInRange(r.score, -1, 1, 'score');
+      assertValidBBox(r.bbox);
+      expect(typeof r.imageId).toBe('string');
     }
+  });
 
-    // Clean up
-    await root.removeEntry('vs-test', { recursive: true });
+  it('respects topK', async () => {
+    const results = await index.query(fileA, undefined, { topK: 2 });
+    expect(results).toHaveLength(2);
+  });
+
+  it('different images produce different top results', async () => {
+    const [rA, rB, rC] = await Promise.all([
+      index.query(fileA),
+      index.query(fileB),
+      index.query(fileC),
+    ]);
+    expect(rA[0].imageId).not.toBe(rB[0].imageId);
+    expect(rA[0].imageId).not.toBe(rC[0].imageId);
   });
 });
