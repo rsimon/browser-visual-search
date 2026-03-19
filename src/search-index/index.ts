@@ -21,7 +21,7 @@ export interface LoadIndexOptions {
 
   executionProviders?: string[];
 
-  create: boolean;
+  create?: boolean;
 
 }
 
