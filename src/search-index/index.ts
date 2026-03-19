@@ -21,6 +21,8 @@ export interface LoadIndexOptions {
 
   executionProviders?: string[];
 
+  create: boolean;
+
 }
 
 export interface BuildIndexOptions extends LoadIndexOptions {
@@ -173,23 +175,34 @@ export const createIndex = (
  * @param dirHandle The directory handle containing index.json and embeddings.bin
  * @returns The loaded index
  */
-export const openIndex = async (dirHandle: FileSystemDirectoryHandle, opts: LoadIndexOptions | BuildIndexOptions): Promise<VisualSearchIndex> => {
-  const vsDir = await dirHandle.getDirectoryHandle(DIR_NAME);
+export const openIndex = async (
+  dirHandle: FileSystemDirectoryHandle, 
+  opts: LoadIndexOptions | BuildIndexOptions
+): Promise<VisualSearchIndex> => {
+  try {
+    const vsDir = await dirHandle.getDirectoryHandle(DIR_NAME);
 
-  const jsonHandle = await vsDir.getFileHandle(INDEX_FILE);
-  const jsonFile   = await jsonHandle.getFile();
-  const jsonText   = await jsonFile.text();
-  const { images }  = JSON.parse(jsonText) as VisualSearchIndexData;
+    const jsonHandle = await vsDir.getFileHandle(INDEX_FILE);
+    const jsonFile   = await jsonHandle.getFile();
+    const jsonText   = await jsonFile.text();
+    const { images }  = JSON.parse(jsonText) as VisualSearchIndexData;
 
-  const binHandle  = await vsDir.getFileHandle(EMBED_FILE);
-  const binFile    = await binHandle.getFile();
-  const binBuffer  = await binFile.arrayBuffer();
-  const embeddings = new Float32Array(binBuffer);
+    const binHandle  = await vsDir.getFileHandle(EMBED_FILE);
+    const binFile    = await binHandle.getFile();
+    const binBuffer  = await binFile.arrayBuffer();
+    const embeddings = new Float32Array(binBuffer);
 
-  // Validate length
-  const totalSegments = images.reduce((n, img) => n + img.segments.length, 0);
-  if (embeddings.length !== totalSegments * EMBEDDING_DIM)
-    throw new Error(`embeddings.bin length mismatch: expected ${totalSegments * EMBEDDING_DIM}, got ${embeddings.length}`);
+    // Validate length
+    const totalSegments = images.reduce((n, img) => n + img.segments.length, 0);
+    if (embeddings.length !== totalSegments * EMBEDDING_DIM)
+      throw new Error(`embeddings.bin length mismatch: expected ${totalSegments * EMBEDDING_DIM}, got ${embeddings.length}`);
 
-  return createIndex(images, embeddings, dirHandle, opts);
+    return createIndex(images, embeddings, dirHandle, opts);
+  } catch (err) {
+    if (opts.create) {
+      return createIndex([], new Float32Array(0), dirHandle, opts);
+    } else {
+      throw err;
+    }
+  }
 }
