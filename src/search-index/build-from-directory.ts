@@ -1,19 +1,17 @@
 import { embedBatch } from '../embedding/embed.js';
 import { segmentImage } from '../segmentation/index.js';
-import { createIndex, loadIndex, EMBEDDING_DIM, type LoadIndexOptions } from './load-index.js';
+import { createIndex, openIndex, EMBEDDING_DIM, type BuildIndexOptions } from './index.js';
 import type { IndexedImage, IndexedImageSegment, VisualSearchIndex } from '../types.js';
 
-export interface BuildOptions extends LoadIndexOptions {
-
-  segmenterUrl: string;
+export interface BuildFromDirectoryOptions extends BuildIndexOptions {
 
   forceReindex?: boolean;
 
-  onProgress?: (progress: BuildProgress) => void;
+  onProgress?: (progress: BuildFromDirectoryProgress) => void;
 
 }
 
-export type BuildProgress =
+export type BuildFromDirectoryProgress =
   | { phase: 'loading' | 'scanning' | 'saving' | 'done' }
   | { phase: 'indexing'; total: number; completed: number; currentFile?: string };
 
@@ -45,9 +43,9 @@ const collectImages = async (dirHandle: FileSystemDirectoryHandle, path: string 
   return images;
 }
 
-export const buildIndex = async (
+export const buildFromDirectory = async (
   dirHandle: FileSystemDirectoryHandle,
-  opts: BuildOptions,
+  opts: BuildFromDirectoryOptions,
 ): Promise<VisualSearchIndex> => {
   const { onProgress, forceReindex } = opts;
 
@@ -58,7 +56,7 @@ export const buildIndex = async (
   let existingEmbeddings = new Float32Array(0);
 
   try {
-    const existing = await loadIndex(dirHandle, opts);
+    const existing = await openIndex(dirHandle, opts);
     existingImages    = [...existing.images];
     existingEmbeddings = existing.embeddings as Float32Array<ArrayBuffer>;;
   } catch {
@@ -138,27 +136,11 @@ export const buildIndex = async (
 
   // 7. Serialize
   onProgress?.({ phase: 'saving' });
-  await serialize(mergedImages, mergedEmbeddings, dirHandle);
 
-  // 8. Return index without re-reading from disk
+  const index = createIndex(mergedImages, mergedEmbeddings, dirHandle, opts);
+  await index.save();
+
   onProgress?.({ phase: 'done' });
-  return createIndex(mergedImages, mergedEmbeddings, dirHandle, opts);
+  return index;
 }
 
-const serialize = async (
-  images: IndexedImage[],
-  embeddings: Float32Array,
-  dirHandle: FileSystemDirectoryHandle,
-): Promise<void> => {
-  const vsDir = await dirHandle.getDirectoryHandle('.visual-search', { create: true });
-
-  const jsonHandle = await vsDir.getFileHandle('index.json', { create: true });
-  const jsonWriter = await jsonHandle.createWritable();
-  await jsonWriter.write(JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), images }, null, 2));
-  await jsonWriter.close();
-
-  const binHandle = await vsDir.getFileHandle('embeddings.bin', { create: true });
-  const binWriter = await binHandle.createWritable();
-  await binWriter.write(embeddings.buffer as ArrayBuffer);
-  await binWriter.close();
-}

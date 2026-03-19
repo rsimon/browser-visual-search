@@ -1,7 +1,8 @@
 
 export { embedImage, embedBatch } from './embedding/index.js';
 export { segmentImage } from './segmentation/index.js';
-export { buildIndex, loadIndex } from './search/index.js';
+export { buildFromDirectory } from './search-index/build-from-directory.js';
+export { indexExists, openIndex } from './search-index/index.js';
 
 export type {
   BBox,
@@ -14,10 +15,11 @@ export type {
 } from './types.js';
 
 export type {
-  BuildOptions,
-  BuildProgress
-} from './search/build-index.js';
+  BuildFromDirectoryOptions,
+  BuildFromDirectoryProgress
+} from './search-index/build-from-directory.js';
 
 export type {
+  BuildIndexOptions,
   LoadIndexOptions
-} from './search/load-index.js';
+} from './search-index/index.js';

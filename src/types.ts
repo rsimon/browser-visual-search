@@ -32,15 +32,19 @@ export interface IndexedImage {
 
 export interface VisualSearchIndex {
 
+  readonly dirHandle: FileSystemDirectoryHandle;
+
   readonly images: ReadonlyArray<IndexedImage>;
 
   readonly embeddings: Float32Array;
 
-  readonly dirHandle: FileSystemDirectoryHandle;
+  addToIndex(image: File, id: string): Promise<void>;
+
+  getImage(imageId: string): IndexedImage | undefined;
 
   query(file: File, bbox?: BBox, options?: SearchOptions): Promise<SearchResult[]>; 
 
-  getImage(imageId: string): IndexedImage | undefined;
+  save(): Promise<void>;
 
 }
 
