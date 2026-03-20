@@ -403,7 +403,7 @@
 <div class="log-panel" id="logPanel"></div>
 
 <script type="module">
-import { loadIndex } from '/src/search/load-index.js';
+import { openIndex } from '/src/search-index/index.js';
 import { embedImage } from '/src/embedding/embed.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -468,7 +468,7 @@ btnLoadIndex.addEventListener('click', async () => {
     log(`Loading index from "${dirHandle.name}"…`);
     setBusy(true);
 
-    index    = await loadIndex(dirHandle, indexOpts());
+    index    = await openIndex(dirHandle, indexOpts());
     imageDir = dirHandle;
 
     const totalSegs = index.images.reduce((n, img) => n + img.segments.length, 0);

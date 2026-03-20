@@ -691,7 +691,7 @@ btnIndex.addEventListener('click', async () => {
   log(`Starting bulk index of "${dirHandle.name}"…`);
 
   try {
-    index = await buildIndex(dirHandle, {
+    index = await buildFromDirectory(dirHandle, {
       ...modelOpts(),
       onProgress: (p) => {
         if (p.phase === 'indexing') {
