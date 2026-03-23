@@ -9,7 +9,7 @@ import type {
   VisualSearchIndex 
 } from '../types.js';
 
-const DIR_NAME   = '.visual-search';
+const DIR_NAME   = ['.visual-search', 'visual-search'];
 const INDEX_FILE = 'index.json';
 const EMBED_FILE = 'embeddings.bin';
 
@@ -40,6 +40,23 @@ interface VisualSearchIndexData {
   images: IndexedImage[];
 
 }
+
+const getDirectoryHandle = async (
+  dirHandle: FileSystemDirectoryHandle,
+  options?: FileSystemGetDirectoryOptions,
+): Promise<FileSystemDirectoryHandle> => {
+  let lastError: unknown;
+
+  for (const name of DIR_NAME) {
+    try {
+      return await dirHandle.getDirectoryHandle(name, options);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError;
+};
 
 const nearestNeighbours = (
   query: Float32Array,
@@ -87,7 +104,7 @@ export const indexExists = async (
   dirHandle: FileSystemDirectoryHandle
 ): Promise<boolean> => {
   try {
-    const vsDir = await dirHandle.getDirectoryHandle(DIR_NAME);
+    const vsDir = await getDirectoryHandle(dirHandle);
     await vsDir.getFileHandle(INDEX_FILE);
     await vsDir.getFileHandle(EMBED_FILE);
     return true;
@@ -155,7 +172,7 @@ export const createIndex = (
     },
 
     async save() {
-      const vsDir = await dirHandle.getDirectoryHandle(DIR_NAME, { create: true });
+      const vsDir = await getDirectoryHandle(dirHandle, { create: true });
 
       const jsonHandle = await vsDir.getFileHandle('index.json', { create: true });
       const jsonWriter = await jsonHandle.createWritable();
@@ -184,7 +201,7 @@ export const openIndex = async (
     throw new Error(`No index found in directory`);
   }
   
-  const vsDir = await dirHandle.getDirectoryHandle(DIR_NAME);
+  const vsDir = await getDirectoryHandle(dirHandle);
 
   const jsonHandle = await vsDir.getFileHandle(INDEX_FILE);
   const jsonFile   = await jsonHandle.getFile();
