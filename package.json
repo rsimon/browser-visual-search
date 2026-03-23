@@ -1,6 +1,6 @@
 {
   "name": "browser-visual-search",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "In-browser visual search powered by FastSAM, CLIP and onnxruntime-web.",
   "type": "module",
   "sideEffects": false,
@@ -29,7 +29,7 @@
     "onnxruntime-web": "^1.24.3",
     "playwright": "^1.58.2",
     "typescript": "^5.9.3",
-    "vite-plugin-static-copy": "^3.3.0",
+    "vite-plugin-static-copy": "^3.4.0",
     "vitest": "^4.1.0"
   },
   "keywords": [
