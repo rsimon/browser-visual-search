@@ -326,7 +326,7 @@
     <section>
       <div class="section-label">Bulk index</div>
       <div class="btn-row">
-        <button id="btnIndex" disabled class="primary">Index all</button>
+        <button id="btnIndex" class="primary">Index all</button>
         <button id="btnSave"  disabled>Save…</button>
       </div>
       <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
@@ -682,7 +682,7 @@ function drawSegments(segs) {
 
 // ── Bulk index ─────────────────────────────────────────────────────────────
 btnIndex.addEventListener('click', async () => {
-  if (!dirHandle || files.length === 0) return;
+  if (!dirHandle) return // || files.length === 0) return;
   setBusy(true);
   btnIndex.disabled = true;
   index = null;
