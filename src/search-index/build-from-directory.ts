@@ -45,7 +45,7 @@ const collectImages = async (dirHandle: FileSystemDirectoryHandle, path: string 
 
 export const buildFromDirectory = async (
   dirHandle: FileSystemDirectoryHandle,
-  opts: BuildFromDirectoryOptions,
+  opts: BuildFromDirectoryOptions
 ): Promise<VisualSearchIndex> => {
   const { onProgress, forceReindex } = opts;
 
@@ -86,7 +86,13 @@ export const buildFromDirectory = async (
     const input = toIndex[i];
     onProgress?.({ phase: 'indexing', total: toIndex.length, completed: i, currentFile: input.id });
 
-    const detections = await segmentImage(input.file, opts);
+    const segOpts = { 
+      segmenterUrl: opts.segmenterUrl, 
+      executionProviders: opts.executionProviders,
+      maxDetections: opts.maxDetectionsPerImage
+    };
+
+    const detections = await segmentImage(input.file, segOpts);
     const bitmap     = await createImageBitmap(input.file);
     const embeddings = await embedBatch(bitmap, detections.map(d => d.bbox), opts);
     bitmap.close();

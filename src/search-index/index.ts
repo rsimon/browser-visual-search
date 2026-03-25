@@ -29,6 +29,8 @@ export interface BuildIndexOptions extends LoadIndexOptions {
 
   segmenterUrl: string;
 
+  maxDetectionsPerImage?: number;
+
 }
 
 interface VisualSearchIndexData {

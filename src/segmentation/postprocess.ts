@@ -181,6 +181,7 @@ export const decodeDetections = (
   padY: number,
   origW: number,
   origH: number,
+  maxDetections = Infinity
 ): RawDetection[] => {
   const NUM_ATTRS   = 37; // 4 box + 1 conf + 32 coeffs
   const NUM_ANCHORS = output0Data.length / NUM_ATTRS; // 8400 for 640px input, 21504 for 1024px
@@ -214,7 +215,7 @@ export const decodeDetections = (
   if (proposals.length === 0) return [];
 
   // ── Step 2: NMS ───────────────────────────────────────────────────────────
-  const kept = nms(proposals, IOU_THRESHOLD);
+  const kept = nms(proposals, IOU_THRESHOLD).slice(0, maxDetections);
 
   // ── Step 3: decode masks + compute areas ─────────────────────────────────
   // output1 is [1, 32, 256, 256] — drop the batch dimension

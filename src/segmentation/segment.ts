@@ -13,7 +13,7 @@ const loadSegmenter = async (url: string, providers: string[] = ['wasm']): Promi
 
 export const segmentImage = async (
   file: File,
-  options: { segmenterUrl: string; executionProviders?: string[] } = { segmenterUrl: '' }
+  options: { segmenterUrl: string; executionProviders?: string[], maxDetections?: number } = { segmenterUrl: '' },
 ): Promise<Array<{ bbox: BBox; area: number }>> => {
   if (!options.segmenterUrl) throw new Error('segmenterUrl is required');
 
@@ -34,7 +34,8 @@ export const segmentImage = async (
     output0.data as Float32Array,
     output1.data as Float32Array,
     scale, padX, padY,
-    origW, origH,
+    origW, origH, 
+    options.maxDetections
   );
 
   bitmap.close();
