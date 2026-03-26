@@ -162,6 +162,8 @@ export const createIndex = (
       await jsonWriter.write(JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), images }, null, 2));
       await jsonWriter.close();
 
+      console.debug(`[browser-local-search] Saving ${_embeddings.length} embeddings for ${images.length} images`);
+
       const flattend = new Float32Array(_embeddings.length * EMBEDDING_DIM);
       _embeddings.forEach((vec, i) => flattend.set(vec, i * EMBEDDING_DIM));
 

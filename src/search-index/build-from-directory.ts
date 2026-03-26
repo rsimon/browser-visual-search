@@ -102,6 +102,8 @@ export const buildFromDirectory = async (
       embeddingRow: j
     }));
 
+    console.debug(`[browser-local-search] ${input.id}: ${embeddings.length} embedding vectors`);
+
     newImages.push({ imageId: input.id, indexedAt: new Date().toISOString(), segments });
     newEmbeddings.push(...embeddings);
   }
@@ -137,20 +139,6 @@ export const buildFromDirectory = async (
     mergedImages.push({ ...img, segments: remappedSegments });
     newEmbeddingsOffset += img.segments.length;
   }
-
-  // This will lead to a 'Maximum call stack size exceeded' error for 100k+ segments!
-  // mergedEmbeddingVecs.push(...newEmbeddings);
-
-  // Slower but memory-safe replacement:
-  const originalLength = mergedEmbeddingVecs.length;
-  mergedEmbeddingVecs.length = originalLength + newEmbeddings.length;
-  for (let i = 0; i < newEmbeddings.length; i++) {
-    mergedEmbeddingVecs[originalLength + i] = newEmbeddings[i];
-  }
-
-  // Flatten into a single Float32Array
-  // const mergedEmbeddings = new Float32Array(mergedEmbeddingVecs.length * EMBEDDING_DIM);
-  // mergedEmbeddingVecs.forEach((vec, i) => mergedEmbeddings.set(vec, i * EMBEDDING_DIM));
 
   // 7. Serialize
   onProgress?.({ phase: 'saving' });
