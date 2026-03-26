@@ -159,7 +159,11 @@ export const createIndex = (
 
       const jsonHandle = await vsDir.getFileHandle('index.json', { create: true });
       const jsonWriter = await jsonHandle.createWritable();
-      await jsonWriter.write(JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), images }, null, 2));
+
+      const encoded = new TextEncoder().encode(
+        JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), images }, null, 2));
+
+      await jsonWriter.write(encoded);
       await jsonWriter.close();
 
       console.debug(`[browser-local-search] Saving ${_embeddings.length} embeddings for ${images.length} images`);
