@@ -53,12 +53,12 @@ export const buildFromDirectory = async (
   onProgress?.({ phase: 'loading' });
   
   let existingImages: IndexedImage[] = [];
-  let existingEmbeddings = new Float32Array(0);
+  let existingEmbeddings: Float32Array[] = [];
 
   try {
     const existing = await openIndex(dirHandle, opts);
     existingImages    = [...existing.images];
-    existingEmbeddings = existing.embeddings as Float32Array<ArrayBuffer>;;
+    existingEmbeddings = [...existing.embeddings];
   } catch {
     // No index yet — start fresh
   }
@@ -80,7 +80,6 @@ export const buildFromDirectory = async (
   // 5. Index new images
   const newImages: IndexedImage[] = [];
   const newEmbeddings: Float32Array[] = [];
-  let nextRow = 0;
 
   for (let i = 0; i < toIndex.length; i++) {
     const input = toIndex[i];
@@ -94,13 +93,13 @@ export const buildFromDirectory = async (
 
     const detections = await segmentImage(input.file, segOpts);
     const bitmap     = await createImageBitmap(input.file);
-    const embeddings = await embedBatch(bitmap, detections.map(d => d.bbox), opts);
+    const embeddings: Float32Array[] = await embedBatch(bitmap, detections.map(d => d.bbox), opts);
     bitmap.close();
 
     const segments: IndexedImageSegment[] = detections.map((det, j) => ({
       bbox:         det.bbox,
       area:         det.area,
-      embeddingRow: nextRow++,
+      embeddingRow: j
     }));
 
     newImages.push({ imageId: input.id, indexedAt: new Date().toISOString(), segments });
@@ -117,22 +116,26 @@ export const buildFromDirectory = async (
 
   for (const img of baseImages) {
     const remappedSegments = img.segments.map(seg => {
-      const vec = existingEmbeddings.subarray(
-        seg.embeddingRow * EMBEDDING_DIM,
-        seg.embeddingRow * EMBEDDING_DIM + EMBEDDING_DIM,
-      );
-      mergedEmbeddingVecs.push(new Float32Array(vec));
+      mergedEmbeddingVecs.push(existingEmbeddings[seg.embeddingRow]);
       return { ...seg, embeddingRow: row++ };
     });
+
     mergedImages.push({ ...img, segments: remappedSegments });
   }
 
+  let newEmbeddingsOffset = 0;
+
   for (const img of newImages) {
-    const remappedSegments = img.segments.map(seg => ({
-      ...seg,
-      embeddingRow: row++,
-    }));
+    const remappedSegments = img.segments.map(seg => {
+      mergedEmbeddingVecs.push(newEmbeddings[newEmbeddingsOffset + seg.embeddingRow]);
+      return {
+        ...seg,
+        embeddingRow: row++
+      };
+    });
+
     mergedImages.push({ ...img, segments: remappedSegments });
+    newEmbeddingsOffset += img.segments.length;
   }
 
   // This will lead to a 'Maximum call stack size exceeded' error for 100k+ segments!
@@ -146,13 +149,13 @@ export const buildFromDirectory = async (
   }
 
   // Flatten into a single Float32Array
-  const mergedEmbeddings = new Float32Array(mergedEmbeddingVecs.length * EMBEDDING_DIM);
-  mergedEmbeddingVecs.forEach((vec, i) => mergedEmbeddings.set(vec, i * EMBEDDING_DIM));
+  // const mergedEmbeddings = new Float32Array(mergedEmbeddingVecs.length * EMBEDDING_DIM);
+  // mergedEmbeddingVecs.forEach((vec, i) => mergedEmbeddings.set(vec, i * EMBEDDING_DIM));
 
   // 7. Serialize
   onProgress?.({ phase: 'saving' });
 
-  const index = createIndex(mergedImages, mergedEmbeddings, dirHandle, opts);
+  const index = createIndex(mergedImages, mergedEmbeddingVecs, dirHandle, opts);
   await index.save();
 
   onProgress?.({ phase: 'done' });

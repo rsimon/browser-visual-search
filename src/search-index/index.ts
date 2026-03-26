@@ -62,7 +62,7 @@ const getDirectoryHandle = async (
 
 const nearestNeighbours = (
   query: Float32Array,
-  embeddings: Float32Array,
+  embeddings: Float32Array[],
   images: IndexedImage[],
   topK = 20,
 ): SearchResult[] => {
@@ -70,10 +70,10 @@ const nearestNeighbours = (
 
   for (const img of images) {
     for (const seg of img.segments) {
-      const offset = seg.embeddingRow * EMBEDDING_DIM;
+      const vec = embeddings[seg.embeddingRow];
       let score = 0;
       for (let k = 0; k < EMBEDDING_DIM; k++)
-        score += query[k] * embeddings[offset + k];
+        score += query[k] * vec[k];
       results.push({ imageId: img.imageId, bbox: seg.bbox, area: seg.area, score });
     }
   }
@@ -81,25 +81,6 @@ const nearestNeighbours = (
   return results
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
-}
-
-const appendEmbeddings = (
-  current: Float32Array,
-  toAdd: Float32Array[],
-): Float32Array => {
-  const totalFloats = current.length + toAdd.reduce((n, c) => n + c.length, 0);
-
-  const next = new Float32Array(totalFloats);
-  next.set(current, 0);
-
-  let offset = current.length;
-
-  for (const chunk of toAdd) {
-    next.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return next;
 }
 
 export const indexExists = async (
@@ -120,13 +101,13 @@ export const indexExists = async (
 
 export const createIndex = (
   images: IndexedImage[],
-  embeddings: Float32Array,
+  embeddings: Float32Array[],
   dirHandle: FileSystemDirectoryHandle,
   opts: LoadIndexOptions | BuildIndexOptions
 ): VisualSearchIndex => {
   const imageMap = new Map(images.map(img => [img.imageId, img]));
 
-  let _embeddings = embeddings;
+  let _embeddings: Float32Array[] = embeddings;
 
   return {
     dirHandle,
@@ -157,7 +138,7 @@ export const createIndex = (
         segments
       });
 
-      _embeddings = appendEmbeddings(_embeddings, vecs);
+      _embeddings.push(...vecs);
     },
 
     getImage(imageId: string): IndexedImage | undefined {
@@ -181,9 +162,12 @@ export const createIndex = (
       await jsonWriter.write(JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), images }, null, 2));
       await jsonWriter.close();
 
+      const flattend = new Float32Array(_embeddings.length * EMBEDDING_DIM);
+      _embeddings.forEach((vec, i) => flattend.set(vec, i * EMBEDDING_DIM));
+
       const binHandle = await vsDir.getFileHandle('embeddings.bin', { create: true });
       const binWriter = await binHandle.createWritable();
-      await binWriter.write(_embeddings.buffer as ArrayBuffer);
+      await binWriter.write(flattend.buffer as ArrayBuffer);
       await binWriter.close();
     }
   }
@@ -199,7 +183,7 @@ export const openIndex = async (
   opts: LoadIndexOptions | BuildIndexOptions
 ): Promise<VisualSearchIndex> => {
   if (!await indexExists(dirHandle)) {
-    if (opts.create) return createIndex([], new Float32Array(0), dirHandle, opts);
+    if (opts.create) return createIndex([], [], dirHandle, opts);
     throw new Error(`No index found in directory`);
   }
   
@@ -213,12 +197,17 @@ export const openIndex = async (
   const binHandle  = await vsDir.getFileHandle(EMBED_FILE);
   const binFile    = await binHandle.getFile();
   const binBuffer  = await binFile.arrayBuffer();
-  const embeddings = new Float32Array(binBuffer);
+  const flattened = new Float32Array(binBuffer);
 
   // Validate length
   const totalSegments = images.reduce((n, img) => n + img.segments.length, 0);
-  if (embeddings.length !== totalSegments * EMBEDDING_DIM)
-    throw new Error(`embeddings.bin length mismatch: expected ${totalSegments * EMBEDDING_DIM}, got ${embeddings.length}`);
+  if (flattened.length !== totalSegments * EMBEDDING_DIM)
+    throw new Error(`embeddings.bin length mismatch: expected ${totalSegments * EMBEDDING_DIM}, got ${flattened.length}`);
+
+  const embeddings: Float32Array[] = Array.from(
+    { length: totalSegments },
+    (_, i) => flattened.slice(i * EMBEDDING_DIM, (i + 1) * EMBEDDING_DIM)
+  );
 
   return createIndex(images, embeddings, dirHandle, opts);
 }

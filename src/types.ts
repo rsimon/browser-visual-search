@@ -36,7 +36,7 @@ export interface VisualSearchIndex {
 
   readonly images: ReadonlyArray<IndexedImage>;
 
-  readonly embeddings: Float32Array;
+  readonly embeddings: Float32Array[];
 
   addToIndex(image: File, id: string): Promise<void>;
 
