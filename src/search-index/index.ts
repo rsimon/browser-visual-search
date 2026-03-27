@@ -217,20 +217,3 @@ export const openIndex = async (
 
   return createIndex(images, embeddings, dirHandle, opts);
 }
-
-/**
- * Helper to test if the index is (plausibly) available - without
- * loading the actual data into memory.
- */
-export const containsIndexFiles = async (dirHandle: FileSystemDirectoryHandle) => {
-  try {
-    const vsDir = await getDirectoryHandle(dirHandle);
-
-    await vsDir.getFileHandle(INDEX_FILE);
-    await vsDir.getFileHandle(EMBED_FILE);
-
-    return true;
-  } catch {
-    return false;
-  }
-}
