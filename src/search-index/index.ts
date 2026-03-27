@@ -124,7 +124,7 @@ export const createIndex = (
       const vecs = await embedBatch(bitmap, detections.map(d => d.bbox), opts);
       bitmap.close();
 
-      const nextRow = _embeddings.length / EMBEDDING_DIM;
+      const nextRow = _embeddings.length;
 
       const segments: IndexedImageSegment[] = detections.map((det, j) => ({
         bbox: det.bbox,
@@ -145,8 +145,8 @@ export const createIndex = (
       return imageMap.get(imageId);
     },
 
-    async query(file: File, bbox?: BBox, options?: SearchOptions): Promise<SearchResult[]> {
-      const queryEmbedding = await embedImage(file, bbox, {
+    async query(blob: Blob, bbox?: BBox, options?: SearchOptions): Promise<SearchResult[]> {
+      const queryEmbedding: Float32Array = await embedImage(blob, bbox, {
         embedderUrl: opts.embedderUrl,
         executionProviders: opts.executionProviders,
       });

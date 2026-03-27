@@ -52,13 +52,13 @@ const l2Normalise = (vec: Float32Array): Float32Array => {
 }
 
 export const embedImage = async (
-  file: File,
+  blob: Blob,
   bbox?: BBox,
   options: { embedderUrl: string; executionProviders?: string[] } = { embedderUrl: '' }
 ): Promise<Float32Array> => {
   if (!options.embedderUrl) throw new Error('embedderUrl is required');
 
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await createImageBitmap(blob);
   const embedder = await loadEmbedder(options.embedderUrl, options.executionProviders);
 
   const tensor = cropToClipTensor(bitmap, bbox);
