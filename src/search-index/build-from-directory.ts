@@ -1,6 +1,6 @@
 import { embedBatch } from '../embedding/embed.js';
 import { segmentImage } from '../segmentation/index.js';
-import { createIndex, openIndex, EMBEDDING_DIM, type BuildIndexOptions } from './index.js';
+import { createIndex, openIndex, type BuildIndexOptions } from './index.js';
 import type { IndexedImage, IndexedImageSegment, VisualSearchIndex } from '../types.js';
 
 export interface BuildFromDirectoryOptions extends BuildIndexOptions {
