@@ -42,7 +42,7 @@ export interface VisualSearchIndex {
 
   getImage(imageId: string): IndexedImage | undefined;
 
-  query(file: File, bbox?: BBox, options?: SearchOptions): Promise<SearchResult[]>; 
+  query(image: Blob, bbox?: BBox, options?: SearchOptions): Promise<SearchResult[]>; 
 
   save(): Promise<void>;
 
