@@ -1,5 +1,5 @@
 export const SEGMENTER_URL = '/models/fastsam-s.onnx';
-export const EMBEDDER_URL  = '/models/clip-vit-b32-visual-int8.onnx';
+export const EMBEDDER_URL  = '/models/clip-vit-b32-visual.onnx';
 
 export const FIXTURE_IMAGES = [
   '/fixtures/image-a.jpg',

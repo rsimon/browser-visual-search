@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createIndex, EMBEDDING_DIM, type LoadIndexOptions } from '../src/search/load-index.js';
+import { createIndex, type LoadIndexOptions } from '../src/search-index/index.js';
 import { embedBatch } from '../src/embedding/embed.js';
 import type { IndexedImage, VisualSearchIndex } from '../src/types.js';
 import { assertInRange, assertValidBBox, EMBEDDER_URL, fetchFixture, FIXTURE_IMAGES } from './setup.js';
@@ -50,10 +50,7 @@ beforeAll(async () => {
     allEmbeddings.push(...embeddings);
   }
 
-  const flat = new Float32Array(allEmbeddings.length * EMBEDDING_DIM);
-  allEmbeddings.forEach((vec, i) => flat.set(vec, i * EMBEDDING_DIM));
-
-  index = createIndex(images, flat, {} as FileSystemDirectoryHandle, OPTS);
+  index = createIndex(images, allEmbeddings, {} as FileSystemDirectoryHandle, OPTS);
 });
 
 // ── getImage ───────────────────────────────────────────────────────────────
