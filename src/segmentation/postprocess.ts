@@ -3,7 +3,7 @@
  *
  * The model produces two output tensors:
  *
- *   output0  [1, 37, N]  where N = anchors (8400 for 640px input, 21504 for 1024px input)
+ *   output0  [1, 37, N]  where N = anchors (8400 for 640px input, 33600 for 1280px input)
  *            For each of N anchors:
  *              [0..3]   cx, cy, w, h  (model-input pixel space)
  *              [4]      objectness confidence
