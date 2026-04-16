@@ -41,9 +41,10 @@ beforeAll(async () => {
       imageId:   id,
       indexedAt: new Date().toISOString(),
       segments:  SEGMENTS.map((s, j) => ({
-        bbox:         s.bbox,
-        area:         s.area,
-        embeddingRow: nextRow++,
+        normalizedBounds: s.bbox,
+        pxBounds: s.bbox, // Dummy
+        area:             s.area,
+        embeddingRow:     nextRow++,
       })),
     });
 
@@ -99,7 +100,7 @@ describe('query', () => {
     expect(results.length).toBeGreaterThan(0);
     for (const r of results) {
       assertInRange(r.score, -1, 1, 'score');
-      assertValidBBox(r.bbox);
+      assertValidBBox(r.normalizedBounds);
       expect(typeof r.imageId).toBe('string');
     }
   });

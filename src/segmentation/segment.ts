@@ -5,7 +5,7 @@ import type { BBox } from '../types.js';
 
 let segmenterSession: ort.InferenceSession | null = null;
 
-const loadSegmenter = async (url: string, providers: string[] = ['wasm']): Promise<ort.InferenceSession> => {
+const loadSegmenter = async (url: string, providers: string[] = ['webgpu', 'wasm']): Promise<ort.InferenceSession> => {
   if (!segmenterSession)
     segmenterSession = await ort.InferenceSession.create(url, { executionProviders: providers });
   return segmenterSession;
@@ -14,7 +14,7 @@ const loadSegmenter = async (url: string, providers: string[] = ['wasm']): Promi
 export const segmentImage = async (
   file: File,
   options: { segmenterUrl: string; executionProviders?: string[], maxDetections?: number } = { segmenterUrl: '' },
-): Promise<Array<{ bbox: BBox; area: number }>> => {
+): Promise<Array<{ normalizedBounds: BBox; pxBounds: BBox, area: number }>> => {
   if (!options.segmenterUrl) throw new Error('segmenterUrl is required');
 
   const bitmap = await createImageBitmap(file);

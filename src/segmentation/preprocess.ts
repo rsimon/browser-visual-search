@@ -1,7 +1,7 @@
 /**
  * Image pre-processing for FastSAM inference.
  *
- * FastSAM-s expects a [1, 3, 1024, 1024] float32 tensor.
+ * FastSAM-s expects a [1, 3, 1280, 1280] float32 tensor.
  * Pixel values normalised to [0, 1], RGB channel order.
  * The image is letterboxed (aspect ratio preserved, padded with 0.5 grey).
  */
@@ -71,21 +71,26 @@ export const letterboxToTensor = (bitmap: ImageBitmap): LetterboxResult => {
  * letterboxed 1024×1024 space) back to normalised [x, y, w, h]
  * coordinates in the original image space.
  */
-export const modelBoxToNormalisedBBox = (
+export const modelBoxToBBox = (
   x1: number, y1: number, x2: number, y2: number,
   scale: number, padX: number, padY: number,
   origW: number, origH: number,
-): [number, number, number, number] => {
+): { normalizedBounds: [number, number, number, number], pxBounds: [number, number, number, number] } => {
   // Remove padding, undo scale
   const ox1 = Math.max(0, (x1 - padX) / scale);
   const oy1 = Math.max(0, (y1 - padY) / scale);
   const ox2 = Math.min(origW, (x2 - padX) / scale);
   const oy2 = Math.min(origH, (y2 - padY) / scale);
 
-  return [
-    ox1 / origW,
-    oy1 / origH,
-    (ox2 - ox1) / origW,
-    (oy2 - oy1) / origH,
-  ];
+  return {
+    normalizedBounds: [
+      ox1 / origW,
+      oy1 / origH,
+      (ox2 - ox1) / origW,
+      (oy2 - oy1) / origH,
+    ],
+    pxBounds: [
+      ox1, oy1, ox2 - ox1, oy2 - oy1
+    ]
+  }
 }

@@ -71,10 +71,18 @@ const nearestNeighbours = (
   for (const img of images) {
     for (const seg of img.segments) {
       const vec = embeddings[seg.embeddingRow];
+      
       let score = 0;
       for (let k = 0; k < EMBEDDING_DIM; k++)
         score += query[k] * vec[k];
-      results.push({ imageId: img.imageId, bbox: seg.bbox, area: seg.area, score });
+
+      results.push({ 
+        imageId: img.imageId, 
+        normalizedBounds: seg.normalizedBounds, 
+        pxBounds: seg.pxBounds, 
+        area: seg.area, 
+        score 
+      });
     }
   }
 
@@ -121,13 +129,14 @@ export const createIndex = (
 
       const detections = await segmentImage(image, opts);
       const bitmap     = await createImageBitmap(image);
-      const vecs = await embedBatch(bitmap, detections.map(d => d.bbox), opts);
+      const vecs = await embedBatch(bitmap, detections.map(d => d.normalizedBounds), opts);
       bitmap.close();
 
       const nextRow = _embeddings.length;
 
       const segments: IndexedImageSegment[] = detections.map((det, j) => ({
-        bbox: det.bbox,
+        normalizedBounds: det.normalizedBounds,
+        pxBounds: det.normalizedBounds,
         area: det.area,
         embeddingRow: nextRow + j
       }));

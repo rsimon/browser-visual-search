@@ -4,7 +4,7 @@ import { fetchFixture, assertValidBBox, FIXTURE_IMAGES, SEGMENTER_URL } from './
 
 describe('segmentImage', () => {
   let fileA: File;
-  let segments: Array<{ bbox: [number, number, number, number]; area: number }>;
+  let segments: Array<{ normalizedBounds: [number, number, number, number]; area: number }>;
 
   beforeAll(async () => {
     fileA = await fetchFixture(FIXTURE_IMAGES[0]);
@@ -17,7 +17,7 @@ describe('segmentImage', () => {
 
   it('every segment has a valid normalised bbox', () => {
     for (const seg of segments) {
-      assertValidBBox(seg.bbox, 'segment bbox');
+      assertValidBBox(seg.normalizedBounds, 'segment bbox');
     }
   });
 
@@ -42,7 +42,7 @@ describe('segmentImage', () => {
       const a = segments[i];
       const b = segments2[i];
       expect(a.area).toBeCloseTo(b.area, 5);
-      expect(a.bbox).toEqual(b.bbox);
+      expect(a.normalizedBounds).toEqual(b.normalizedBounds);
     }
   });
 });

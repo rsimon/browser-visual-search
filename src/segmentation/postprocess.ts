@@ -20,13 +20,16 @@
  *   5. Compute mask area, convert bbox to normalised image coords
  */
 
-import { modelBoxToNormalisedBBox } from './preprocess.js';
+import { MODEL_INPUT_SIZE, modelBoxToBBox } from './preprocess.js';
 import type { BBox } from '../types.js';
 
 export interface RawDetection {
 
-  /** Absolute pixel bbox in original image space, normalised [x,y,w,h] */
-  bbox: BBox;
+  /** Normalized pixel bbox [x,y,w,h] */
+  normalizedBounds: BBox;
+
+  /** Original pixel bbox [x,y,w,h] */
+  pxBounds: BBox;
 
   /** Normalised mask area in [0,1] relative to original image */
   area: number;
@@ -132,7 +135,7 @@ const decodeMask = (coeffs: Float32Array, protos: Float32Array): Float32Array =>
  * then normalise to original image area.
  *
  * The prototype mask is 256×256 (model input / 4). The bbox coords are in
- * the 1024×1024 model-input space, so we scale down by 4 to index into the
+ * the model-input space, so we scale down by 4 to index into the
  * prototype mask.
  */
 const maskAreaInBBox = (
@@ -141,7 +144,7 @@ const maskAreaInBBox = (
   origW: number, origH: number,
   threshold = 0.5,
 ): number => {
-  const scale = PROTO_SIZE / 1024;
+  const scale = PROTO_SIZE / MODEL_INPUT_SIZE;
   const mx1 = Math.max(0,            Math.floor(x1 * scale));
   const my1 = Math.max(0,            Math.floor(y1 * scale));
   const mx2 = Math.min(PROTO_SIZE,   Math.ceil (x2 * scale));
@@ -156,7 +159,7 @@ const maskAreaInBBox = (
   }
 
   // Pixels in proto space → original image pixels → normalised area
-  const protoPixelArea = (1024 / PROTO_SIZE) * (1024 / PROTO_SIZE);
+  const protoPixelArea = (MODEL_INPUT_SIZE / PROTO_SIZE) * (MODEL_INPUT_SIZE / PROTO_SIZE);
   return (positive * protoPixelArea) / (origW * origH);
 }
 
@@ -227,13 +230,13 @@ export const decodeDetections = (
     const mask = decodeMask(p.coeffs, protos);
     const area = maskAreaInBBox(mask, p.x1, p.y1, p.x2, p.y2, origW, origH);
 
-    const bbox = modelBoxToNormalisedBBox(
+    const { normalizedBounds, pxBounds } = modelBoxToBBox(
       p.x1, p.y1, p.x2, p.y2,
       scale, padX, padY,
       origW, origH,
     );
 
-    results.push({ bbox, area });
+    results.push({ normalizedBounds, pxBounds, area });
   }
 
   // Sort largest-first, matching server-side behaviour

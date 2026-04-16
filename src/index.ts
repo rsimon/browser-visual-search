@@ -10,7 +10,6 @@ export type {
   IndexedImageSegment,
   SearchOptions,
   SearchResult,
-  Segment,
   VisualSearchIndex
 } from './types.js';
 

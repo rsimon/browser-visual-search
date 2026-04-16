@@ -1,18 +1,10 @@
 export type BBox = [number, number, number, number];
 
-export interface Segment {
-
-  bbox: BBox;
-
-  area: number;
-
-  embedding: Float32Array;
-
-}
-
 export interface IndexedImageSegment {
 
-  bbox: BBox;
+  normalizedBounds: BBox;
+
+  pxBounds: BBox;
 
   area: number;
 
@@ -58,7 +50,9 @@ export interface SearchResult {
 
   imageId: string;
 
-  bbox: BBox;
+  normalizedBounds: BBox;
+
+  pxBounds: BBox;
 
   area: number;
 

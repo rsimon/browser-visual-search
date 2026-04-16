@@ -93,13 +93,14 @@ export const buildFromDirectory = async (
 
     const detections = await segmentImage(input.file, segOpts);
     const bitmap     = await createImageBitmap(input.file);
-    const embeddings: Float32Array[] = await embedBatch(bitmap, detections.map(d => d.bbox), opts);
+    const embeddings: Float32Array[] = await embedBatch(bitmap, detections.map(d => d.normalizedBounds), opts);
     bitmap.close();
 
     const segments: IndexedImageSegment[] = detections.map((det, j) => ({
-      bbox:         det.bbox,
-      area:         det.area,
-      embeddingRow: j
+      normalizedBounds: det.normalizedBounds,
+      pxBounds: det.pxBounds,
+      area:           det.area,
+      embeddingRow:   j
     }));
 
     console.debug(`[browser-local-search] ${input.id}: ${embeddings.length} embedding vectors`);
