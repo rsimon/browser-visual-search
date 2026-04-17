@@ -136,7 +136,7 @@ export const createIndex = (
 
       const segments: IndexedImageSegment[] = detections.map((det, j) => ({
         normalizedBounds: det.normalizedBounds,
-        pxBounds: det.normalizedBounds,
+        pxBounds: det.pxBounds,
         area: det.area,
         embeddingRow: nextRow + j
       }));

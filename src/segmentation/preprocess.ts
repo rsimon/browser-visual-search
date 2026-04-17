@@ -90,7 +90,10 @@ export const modelBoxToBBox = (
       (oy2 - oy1) / origH,
     ],
     pxBounds: [
-      ox1, oy1, ox2 - ox1, oy2 - oy1
+      Math.round(ox1), 
+      Math.round(oy1),
+      Math.round(ox2 - ox1),
+      Math.round(oy2 - oy1)
     ]
   }
 }

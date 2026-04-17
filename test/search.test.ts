@@ -101,6 +101,7 @@ describe('query', () => {
     for (const r of results) {
       assertInRange(r.score, -1, 1, 'score');
       assertValidBBox(r.normalizedBounds);
+      assertValidBBox(r.pxBounds);
       expect(typeof r.imageId).toBe('string');
     }
   });
