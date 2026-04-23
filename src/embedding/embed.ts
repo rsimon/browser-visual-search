@@ -7,7 +7,7 @@ const CLIP_INPUT_SIZE = 224;
 
 let embedderSession: ort.InferenceSession | null = null;
 
-const loadEmbedder = async (
+export const loadEmbedder = async (
   url: string, 
   providers: string[] = ['webgpu', 'wasm'],
   onProgress?: (status: ModelLoadStatus) => void

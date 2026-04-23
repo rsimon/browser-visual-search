@@ -6,7 +6,7 @@ import { decodeDetections } from './postprocess.js';
 
 let segmenterSession: ort.InferenceSession | null = null;
 
-const loadSegmenter = async (
+export const loadSegmenter = async (
   url: string, 
   providers: string[] = ['webgpu', 'wasm'],
   onProgress?: (status: ModelLoadStatus) => void

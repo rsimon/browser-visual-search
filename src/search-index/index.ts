@@ -1,9 +1,10 @@
-import { embedBatch, embedImage } from '../embedding/embed.js';
-import { segmentImage } from '../segmentation/segment.js';
+import { embedBatch, embedImage, loadEmbedder } from '../embedding/embed.js';
+import { loadSegmenter, segmentImage } from '../segmentation/segment.js';
 import type { 
   BBox, 
   IndexedImage, 
   IndexedImageSegment, 
+  ModelLoadStatus, 
   SearchOptions, 
   SearchResult, 
   VisualSearchIndex 
@@ -184,6 +185,15 @@ export const createIndex = (
       const binWriter = await binHandle.createWritable();
       await binWriter.write(flattend.buffer as ArrayBuffer);
       await binWriter.close();
+    },
+
+    dowloadSegmentationModel(onProgress: (progress: ModelLoadStatus) => void) {
+      if (!('segmenterUrl' in opts)) throw new Error('Segmenter URL missing');
+      return loadSegmenter(opts.segmenterUrl, opts.executionProviders, onProgress);
+    },
+
+    dowloadEmbeddingModel(onProgress: (progress: ModelLoadStatus) => void) {
+      return loadEmbedder(opts.embedderUrl, opts.executionProviders, onProgress);
     }
   }
 }
