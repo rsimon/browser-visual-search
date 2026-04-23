@@ -37,9 +37,7 @@ const fetchWithProgress = async (
       chunks.push(value);
       loaded += value.length;
 
-      // Call progress callback if provided
-      if (onProgress)
-        onProgress({ status: 'downloading', loaded, total });
+      onProgress?.({ status: 'downloading', loaded, total });
     }
   }
 
