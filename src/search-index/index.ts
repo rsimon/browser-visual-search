@@ -187,13 +187,13 @@ export const createIndex = (
       await binWriter.close();
     },
 
-    dowloadSegmentationModel(onProgress: (progress: ModelLoadStatus) => void) {
+    async dowloadSegmentationModel(onProgress: (progress: ModelLoadStatus) => void) {
       if (!('segmenterUrl' in opts)) throw new Error('Segmenter URL missing');
-      return loadSegmenter(opts.segmenterUrl, opts.executionProviders, onProgress);
+      await loadSegmenter(opts.segmenterUrl, opts.executionProviders, onProgress);
     },
 
-    dowloadEmbeddingModel(onProgress: (progress: ModelLoadStatus) => void) {
-      return loadEmbedder(opts.embedderUrl, opts.executionProviders, onProgress);
+    async dowloadEmbeddingModel(onProgress: (progress: ModelLoadStatus) => void) {
+      await loadEmbedder(opts.embedderUrl, opts.executionProviders, onProgress);
     }
   }
 }

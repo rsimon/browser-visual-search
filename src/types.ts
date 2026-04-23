@@ -43,9 +43,9 @@ export interface VisualSearchIndex {
 
   save(): Promise<void>;
 
-  dowloadSegmentationModel(onProgress: (progress: ModelLoadStatus) => void): void;
+  dowloadSegmentationModel(onProgress: (progress: ModelLoadStatus) => void): Promise<void>;
   
-  dowloadEmbeddingModel(onProgress: (progress: ModelLoadStatus) => void): void;
+  dowloadEmbeddingModel(onProgress: (progress: ModelLoadStatus) => void): Promise<void>;
 
 }
 
