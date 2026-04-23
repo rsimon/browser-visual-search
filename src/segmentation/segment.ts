@@ -1,13 +1,23 @@
 import * as ort from 'onnxruntime-web';
+import { loadModel } from '../download-model.js';
+import type { BBox, ModelLoadStatus } from '../types.js';
 import { letterboxToTensor, MODEL_INPUT_SIZE } from './preprocess.js';
 import { decodeDetections } from './postprocess.js';
-import type { BBox } from '../types.js';
 
 let segmenterSession: ort.InferenceSession | null = null;
 
-const loadSegmenter = async (url: string, providers: string[] = ['webgpu', 'wasm']): Promise<ort.InferenceSession> => {
-  if (!segmenterSession)
-    segmenterSession = await ort.InferenceSession.create(url, { executionProviders: providers });
+const loadSegmenter = async (
+  url: string, 
+  providers: string[] = ['webgpu', 'wasm'],
+  onProgress?: (status: ModelLoadStatus) => void
+): Promise<ort.InferenceSession> => {
+  if (!segmenterSession) {
+    const modelBuffer = await loadModel(url, onProgress);
+    segmenterSession = await ort.InferenceSession.create(modelBuffer, {
+      executionProviders: providers,
+    });
+  }
+
   return segmenterSession;
 }
 
