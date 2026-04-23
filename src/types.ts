@@ -1,3 +1,8 @@
+export type ModelLoadStatus =
+  | { status: 'cached' }
+  | { status: 'downloading'; loaded: number; total?: number } 
+  | { status: 'ready' };    
+
 export type BBox = [number, number, number, number];
 
 export interface IndexedImageSegment {

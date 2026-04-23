@@ -1,14 +1,23 @@
 import * as ort from 'onnxruntime-web';
-import type { BBox } from '../types.js';
+import type { BBox, ModelLoadStatus } from '../types.js';
+import { loadModel } from '../download-model.js';
 
 const EMBEDDING_DIM = 512;
 const CLIP_INPUT_SIZE = 224;
 
 let embedderSession: ort.InferenceSession | null = null;
 
-const loadEmbedder = async (url: string, providers: string[] = ['webgpu', 'wasm']): Promise<ort.InferenceSession> => {
-  if (!embedderSession)
-    embedderSession = await ort.InferenceSession.create(url, { executionProviders: providers });
+const loadEmbedder = async (
+  url: string, 
+  providers: string[] = ['webgpu', 'wasm'],
+  onProgress?: (status: ModelLoadStatus) => void
+): Promise<ort.InferenceSession> => {
+  if (!embedderSession) {
+    const modelBuffer = await loadModel(url, onProgress);
+    embedderSession = await ort.InferenceSession.create(modelBuffer, {
+      executionProviders: providers,
+    });
+  }
 
   return embedderSession;
 }
