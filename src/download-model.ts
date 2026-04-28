@@ -93,11 +93,11 @@ export const loadModel = async (
 
     if (file.size > 10000000) {
       const buffer = await file.arrayBuffer();
-      onProgress?.({ status: 'ready' });
+      onProgress?.({ status: 'download_complete' });
       return buffer;
     } else {
       // Something's off - delete this file
-      root.removeEntry(filename);
+      await root.removeEntry(filename);
     }
   }
 
@@ -112,7 +112,7 @@ export const loadModel = async (
     await writable.write(buffer);
     await writable.close();
 
-    onProgress?.({ status: 'ready' });
+    onProgress?.({ status: 'download_complete' });
     return buffer;
   } catch (error) {
     console.error(error);

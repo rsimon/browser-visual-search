@@ -1,7 +1,8 @@
 export type ModelLoadStatus =
   | { status: 'cached' }
   | { status: 'downloading'; loaded: number; total?: number } 
-  | { status: 'ready' };    
+  | { status: 'download_complete' }
+  | { status: 'model_ready'};
 
 export type BBox = [number, number, number, number];
 
@@ -43,9 +44,9 @@ export interface VisualSearchIndex {
 
   save(): Promise<void>;
 
-  dowloadSegmentationModel(onProgress: (progress: ModelLoadStatus) => void): Promise<void>;
+  downloadSegmentationModel(onProgress: (progress: ModelLoadStatus) => void): Promise<void>;
   
-  dowloadEmbeddingModel(onProgress: (progress: ModelLoadStatus) => void): Promise<void>;
+  downloadEmbeddingModel(onProgress: (progress: ModelLoadStatus) => void): Promise<void>;
 
 }
 

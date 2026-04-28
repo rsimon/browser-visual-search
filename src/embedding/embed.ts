@@ -13,13 +13,17 @@ export const loadEmbedder = async (
   onProgress?: (status: ModelLoadStatus) => void
 ): Promise<ort.InferenceSession> => {
   if (!embedderSession) {
-    const modelBuffer = await loadModel(url, onProgress);
-    embedderSession = await ort.InferenceSession.create(modelBuffer, {
-      executionProviders: providers,
-    });
+    return loadModel(url, onProgress).then(modelBuffer => {
+      return ort.InferenceSession.create(modelBuffer, {
+        executionProviders: providers,
+      }).then(session => {
+        embedderSession = session;
+        return session;
+      })
+    })
+  } else {
+    return Promise.resolve(embedderSession);
   }
-
-  return embedderSession;
 }
 
 const cropToClipTensor = (bitmap: ImageBitmap, bbox?: BBox): Float32Array => {
