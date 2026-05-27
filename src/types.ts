@@ -1,3 +1,17 @@
+export interface ModelConfig {
+  
+  /** Square input size the model was exported at */
+  inputSize: number;
+
+  /** Spatial dimension of the prototype mask tensor (output1) */
+  protoSize: number;
+
+  confThreshold: number;
+
+  iouThreshold: number;
+
+}
+
 export type ModelLoadStatus =
   | { status: 'cached' }
   | { status: 'downloading'; loaded: number; total?: number } 
