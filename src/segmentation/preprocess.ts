@@ -28,39 +28,33 @@ export interface LetterboxResult {
  * then return a normalised float32 tensor and the transform parameters
  * needed to map detections back to the original image coordinate space.
  */
-export const letterboxToTensor = (bitmap: ImageBitmap): LetterboxResult => {
-  const S = MODEL_INPUT_SIZE;
+export const letterboxToTensor = (
+  bitmap: ImageBitmap,
+  inputSize: number,
+): LetterboxResult => {
   const { width: srcW, height: srcH } = bitmap;
 
-  // Uniform scale so the longest side fits in S
-  const scale = Math.min(S / srcW, S / srcH);
+  const scale   = Math.min(inputSize / srcW, inputSize / srcH);
   const scaledW = Math.round(srcW * scale);
   const scaledH = Math.round(srcH * scale);
+  const padX    = Math.floor((inputSize - scaledW) / 2);
+  const padY    = Math.floor((inputSize - scaledH) / 2);
 
-  // Padding to centre the scaled image
-  const padX = Math.floor((S - scaledW) / 2);
-  const padY = Math.floor((S - scaledH) / 2);
+  const canvas = new OffscreenCanvas(inputSize, inputSize);
+  const ctx    = canvas.getContext('2d')!;
 
-  // Draw into an off-screen canvas
-  const canvas = new OffscreenCanvas(S, S);
-  const ctx = canvas.getContext('2d')!;
-
-  // Fill with mid-grey (matching Ultralytics letterbox default: 114/255 ≈ 0.447)
-  ctx.fillStyle = `rgb(114,114,114)`;
-  ctx.fillRect(0, 0, S, S);
+  ctx.fillStyle = 'rgb(114,114,114)';
+  ctx.fillRect(0, 0, inputSize, inputSize);
   ctx.drawImage(bitmap, padX, padY, scaledW, scaledH);
 
-  const imageData = ctx.getImageData(0, 0, S, S);
-  const { data } = imageData; // Uint8ClampedArray, RGBA interleaved
+  const { data } = ctx.getImageData(0, 0, inputSize, inputSize);
+  const tensor   = new Float32Array(3 * inputSize * inputSize);
+  const plane    = inputSize * inputSize;
 
-  // Convert RGBA interleaved → RGB planar, normalised to [0,1]
-  const tensor = new Float32Array(3 * S * S);
-  const planeSize = S * S;
-
-  for (let i = 0; i < planeSize; i++) {
-    tensor[i]                   = data[i * 4]     / 255; // R
-    tensor[planeSize + i]       = data[i * 4 + 1] / 255; // G
-    tensor[planeSize * 2 + i]   = data[i * 4 + 2] / 255; // B
+  for (let i = 0; i < plane; i++) {
+    tensor[i]           = data[i * 4]     / 255;
+    tensor[plane + i]   = data[i * 4 + 1] / 255;
+    tensor[plane*2 + i] = data[i * 4 + 2] / 255;
   }
 
   return { tensor, scale, padX, padY };

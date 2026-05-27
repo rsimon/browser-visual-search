@@ -1,51 +1,64 @@
 import * as ort from 'onnxruntime-web';
 import { loadModel } from '../download-model.js';
 import type { BBox, ModelLoadStatus } from '../types.js';
-import { letterboxToTensor, MODEL_INPUT_SIZE } from './preprocess.js';
+import { letterboxToTensor } from './preprocess.js';
 import { decodeDetections } from './postprocess.js';
+import { MODEL_CONFIGURATIONS, ModelName } from '../model-configurations.js';
 
 let segmenterSession: ort.InferenceSession | null = null;
 
 export const loadSegmenter = async (
-  url: string, 
+  url: string,
   providers: string[] = ['webgpu', 'wasm'],
-  onProgress?: (status: ModelLoadStatus) => void
+  onProgress?: (status: ModelLoadStatus) => void,
 ): Promise<ort.InferenceSession> => {
   if (!segmenterSession) {
     const modelBuffer = await loadModel(url, onProgress);
-    segmenterSession = await ort.InferenceSession.create(modelBuffer, {
+    segmenterSession  = await ort.InferenceSession.create(modelBuffer, {
       executionProviders: providers,
     });
   }
-
   return segmenterSession;
-}
+};
+
+const resolveConfig = (segmenterUrl: string) => {
+  const modelName = segmenterUrl.split('/').pop()?.replace(/\.onnx$/, '') ?? '';
+  if (!(modelName in MODEL_CONFIGURATIONS)) {
+    throw new Error(
+      `No config found for model "${modelName}". ` +
+      `Add an entry to MODEL_CONFIGS in models.ts.`
+    );
+  }
+  return MODEL_CONFIGURATIONS[modelName as ModelName];
+};
 
 export const segmentImage = async (
   file: File,
-  options: { segmenterUrl: string; executionProviders?: string[], maxDetections?: number } = { segmenterUrl: '' },
-): Promise<Array<{ normalizedBounds: BBox; pxBounds: BBox, area: number }>> => {
-  if (!options.segmenterUrl) throw new Error('segmenterUrl is required');
+  options: {
+    segmenterUrl: string;
+    executionProviders?: string[];
+    maxDetections?: number;
+  },
+): Promise<Array<{ normalizedBounds: BBox; pxBounds: BBox; area: number }>> => {
+  const { segmenterUrl, executionProviders, maxDetections } = options;
 
-  const bitmap = await createImageBitmap(file);
-  const segmenter = await loadSegmenter(options.segmenterUrl, options.executionProviders);
+  const config   = resolveConfig(segmenterUrl);
+  const bitmap   = await createImageBitmap(file);
+  const segmenter = await loadSegmenter(segmenterUrl, executionProviders);
 
-  const { tensor, scale, padX, padY } = letterboxToTensor(bitmap);
+  const { tensor, scale, padX, padY } = letterboxToTensor(bitmap, config.inputSize);
   const { width: origW, height: origH } = bitmap;
 
-  const inputTensor = new ort.Tensor('float32', tensor, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
-  const feeds = { [segmenter.inputNames[0]]: inputTensor };
-  const output = await segmenter.run(feeds);
-
-  const output0 = output[segmenter.outputNames[0]];
-  const output1 = output[segmenter.outputNames[1]];
+  const inputTensor = new ort.Tensor('float32', tensor, [1, 3, config.inputSize, config.inputSize]);
+  const feeds       = { [segmenter.inputNames[0]]: inputTensor };
+  const output      = await segmenter.run(feeds);
 
   const detections = decodeDetections(
-    output0.data as Float32Array,
-    output1.data as Float32Array,
-    scale, padX, padY,
-    origW, origH, 
-    options.maxDetections
+    output[segmenter.outputNames[0]].data as Float32Array,
+    output[segmenter.outputNames[1]].data as Float32Array,
+    scale, padX, padY, origW, origH,
+    config,
+    maxDetections,
   );
 
   bitmap.close();

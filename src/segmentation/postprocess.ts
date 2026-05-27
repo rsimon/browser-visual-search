@@ -1,181 +1,104 @@
-/**
- * Post-processing for FastSAM-s / YOLOv8-seg ONNX output.
- *
- * The model produces two output tensors:
- *
- *   output0  [1, 37, N]  where N = anchors (8400 for 640px input, 33600 for 1280px input)
- *            For each of N anchors:
- *              [0..3]   cx, cy, w, h  (model-input pixel space)
- *              [4]      objectness confidence
- *              [5..36]  32 mask coefficients
- *
- *   output1  [1, 32, 256, 256]
- *            32 prototype masks (model-input space, scaled down 4×)
- *
- * Pipeline:
- *   1. Filter proposals by confidence threshold
- *   2. Convert cx/cy/w/h → x1/y1/x2/y2
- *   3. Non-maximum suppression (NMS)
- *   4. For each surviving detection: decode mask = sigmoid(coeffs @ protos)
- *   5. Compute mask area, convert bbox to normalised image coords
- */
-
-import { MODEL_INPUT_SIZE, modelBoxToBBox } from './preprocess.js';
-import type { BBox } from '../types.js';
+import { modelBoxToBBox } from './preprocess.js';
+import type { BBox, ModelConfig } from '../types.js';
 
 export interface RawDetection {
-
-  /** Normalized pixel bbox [x,y,w,h] */
   normalizedBounds: BBox;
-
-  /** Original pixel bbox [x,y,w,h] */
   pxBounds: BBox;
-
-  /** Normalised mask area in [0,1] relative to original image */
   area: number;
-
 }
 
-const CONF_THRESHOLD = 0.01;
-const IOU_THRESHOLD  = 0.5;
-const PROTO_SIZE     = 256; // output1 spatial dimension
-const NUM_PROTOS     = 32;
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
-
-const intersectionArea = (
-  ax1: number, ay1: number, ax2: number, ay2: number,
-  bx1: number, by1: number, bx2: number, by2: number,
-): number => {
-  const ix1 = Math.max(ax1, bx1);
-  const iy1 = Math.max(ay1, by1);
-  const ix2 = Math.min(ax2, bx2);
-  const iy2 = Math.min(ay2, by2);
-  return Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
-}
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
 const iou = (
   ax1: number, ay1: number, ax2: number, ay2: number,
   bx1: number, by1: number, bx2: number, by2: number,
 ): number => {
-  const inter = intersectionArea(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2);
+  const ix1 = Math.max(ax1, bx1), iy1 = Math.max(ay1, by1);
+  const ix2 = Math.min(ax2, bx2), iy2 = Math.min(ay2, by2);
+  const inter = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
   if (inter === 0) return 0;
-  const aArea = (ax2 - ax1) * (ay2 - ay1);
-  const bArea = (bx2 - bx1) * (by2 - by1);
-  return inter / (aArea + bArea - inter);
-}
+  return inter / ((ax2-ax1)*(ay2-ay1) + (bx2-bx1)*(by2-by1) - inter);
+};
 
-// ── NMS ──────────────────────────────────────────────────────────────────────
+// ── NMS ───────────────────────────────────────────────────────────────────────
 
 interface Proposal {
-
   x1: number; y1: number; x2: number; y2: number;
-
   conf: number;
-
-  coeffs: Float32Array; // length 32
-
+  coeffs: Float32Array;
 }
 
 const nms = (proposals: Proposal[], iouThreshold: number): Proposal[] => {
-  // Sort descending by confidence
   proposals.sort((a, b) => b.conf - a.conf);
-
-  const kept: Proposal[] = [];
   const suppressed = new Uint8Array(proposals.length);
+  const kept: Proposal[] = [];
 
   for (let i = 0; i < proposals.length; i++) {
     if (suppressed[i]) continue;
     kept.push(proposals[i]);
     const p = proposals[i];
     for (let j = i + 1; j < proposals.length; j++) {
-      if (suppressed[j]) continue;
-      const q = proposals[j];
-      if (iou(p.x1, p.y1, p.x2, p.y2, q.x1, q.y1, q.x2, q.y2) > iouThreshold) {
+      if (!suppressed[j] &&
+          iou(p.x1, p.y1, p.x2, p.y2,
+              proposals[j].x1, proposals[j].y1, proposals[j].x2, proposals[j].y2) > iouThreshold) {
         suppressed[j] = 1;
       }
     }
   }
 
   return kept;
-}
+};
 
 // ── Mask decoding ─────────────────────────────────────────────────────────────
 
-/**
- * Decode a single instance mask from 32 coefficients and the prototype tensor.
- *
- * protos: flat Float32Array of shape [32, 256, 256], row-major.
- * Returns a flat Float32Array of shape [256, 256] with values in [0,1].
- */
-const decodeMask = (coeffs: Float32Array, protos: Float32Array): Float32Array => {
-  const protoSize = PROTO_SIZE * PROTO_SIZE;
-  const mask = new Float32Array(protoSize);
+const decodeMask = (
+  coeffs: Float32Array,
+  protos: Float32Array,
+  protoSize: number,
+  numProtos: number,
+): Float32Array => {
+  const n    = protoSize * protoSize;
+  const mask = new Float32Array(n);
 
-  for (let k = 0; k < NUM_PROTOS; k++) {
-    const c = coeffs[k];
-    const offset = k * protoSize;
-    for (let i = 0; i < protoSize; i++) {
-      mask[i] += c * protos[offset + i];
-    }
+  for (let k = 0; k < numProtos; k++) {
+    const c = coeffs[k], offset = k * n;
+    for (let i = 0; i < n; i++) mask[i] += c * protos[offset + i];
   }
-
-  // Apply sigmoid
-  for (let i = 0; i < protoSize; i++) {
-    mask[i] = sigmoid(mask[i]);
-  }
+  for (let i = 0; i < n; i++) mask[i] = sigmoid(mask[i]);
 
   return mask;
-}
+};
 
-/**
- * Count positive mask pixels within a bbox region of the proto-space mask,
- * then normalise to original image area.
- *
- * The prototype mask is 256×256 (model input / 4). The bbox coords are in
- * the model-input space, so we scale down by 4 to index into the
- * prototype mask.
- */
 const maskAreaInBBox = (
   mask: Float32Array,
   x1: number, y1: number, x2: number, y2: number,
   origW: number, origH: number,
+  inputSize: number,
+  protoSize: number,
   threshold = 0.5,
 ): number => {
-  const scale = PROTO_SIZE / MODEL_INPUT_SIZE;
-  const mx1 = Math.max(0,            Math.floor(x1 * scale));
-  const my1 = Math.max(0,            Math.floor(y1 * scale));
-  const mx2 = Math.min(PROTO_SIZE,   Math.ceil (x2 * scale));
-  const my2 = Math.min(PROTO_SIZE,   Math.ceil (y2 * scale));
+  const s   = protoSize / inputSize;
+  const mx1 = Math.max(0,         Math.floor(x1 * s));
+  const my1 = Math.max(0,         Math.floor(y1 * s));
+  const mx2 = Math.min(protoSize, Math.ceil (x2 * s));
+  const my2 = Math.min(protoSize, Math.ceil (y2 * s));
 
   let positive = 0;
+  for (let row = my1; row < my2; row++)
+    for (let col = mx1; col < mx2; col++)
+      if (mask[row * protoSize + col] > threshold) positive++;
 
-  for (let row = my1; row < my2; row++) {
-    for (let col = mx1; col < mx2; col++) {
-      if (mask[row * PROTO_SIZE + col] > threshold) positive++;
-    }
-  }
-
-  // Pixels in proto space → original image pixels → normalised area
-  const protoPixelArea = (MODEL_INPUT_SIZE / PROTO_SIZE) * (MODEL_INPUT_SIZE / PROTO_SIZE);
+  const protoPixelArea = (inputSize / protoSize) ** 2;
   return (positive * protoPixelArea) / (origW * origH);
-}
+};
 
-// ── Public interface ──────────────────────────────────────────────────────────
+// ── Public interface ───────────────────────────────────────────────────────────
 
-/**
- * Parse the two ONNX output tensors from FastSAM-s into RawDetections.
- *
- * @param output0Data  Flat data from output0 tensor [1, 37, 8400]
- * @param output1Data  Flat data from output1 tensor [1, 32, 256, 256]
- * @param scale        From letterboxToTensor()
- * @param padX         From letterboxToTensor()
- * @param padY         From letterboxToTensor()
- * @param origW        Original image width in px
- * @param origH        Original image height in px
- */
+const NUM_ATTRS  = 37;
+const NUM_PROTOS = 32;
+
 export const decodeDetections = (
   output0Data: Float32Array,
   output1Data: Float32Array,
@@ -184,61 +107,42 @@ export const decodeDetections = (
   padY: number,
   origW: number,
   origH: number,
-  maxDetections = Infinity
+  config: ModelConfig,
+  maxDetections = Infinity,
 ): RawDetection[] => {
-  const NUM_ATTRS   = 37; // 4 box + 1 conf + 32 coeffs
-  const NUM_ANCHORS = output0Data.length / NUM_ATTRS; // 8400 for 640px input, 21504 for 1024px
+  const { inputSize, protoSize, confThreshold, iouThreshold } = config;
+  const numAnchors = output0Data.length / NUM_ATTRS;
 
-  // ── Step 1: collect proposals above confidence threshold ──────────────────
   const proposals: Proposal[] = [];
 
-  for (let a = 0; a < NUM_ANCHORS; a++) {
-    // output0 is [1, 37, 8400] — iterate over the anchor dimension
-    const conf = output0Data[4 * NUM_ANCHORS + a];
-    if (conf < CONF_THRESHOLD) continue;
+  for (let a = 0; a < numAnchors; a++) {
+    const conf = output0Data[4 * numAnchors + a];
+    if (conf < confThreshold) continue;
 
-    const cx = output0Data[0 * NUM_ANCHORS + a];
-    const cy = output0Data[1 * NUM_ANCHORS + a];
-    const w  = output0Data[2 * NUM_ANCHORS + a];
-    const h  = output0Data[3 * NUM_ANCHORS + a];
-
-    const x1 = cx - w / 2;
-    const y1 = cy - h / 2;
-    const x2 = cx + w / 2;
-    const y2 = cy + h / 2;
+    const cx = output0Data[0 * numAnchors + a];
+    const cy = output0Data[1 * numAnchors + a];
+    const w  = output0Data[2 * numAnchors + a];
+    const h  = output0Data[3 * numAnchors + a];
 
     const coeffs = new Float32Array(NUM_PROTOS);
-    for (let k = 0; k < NUM_PROTOS; k++) {
-      coeffs[k] = output0Data[(5 + k) * NUM_ANCHORS + a];
-    }
+    for (let k = 0; k < NUM_PROTOS; k++)
+      coeffs[k] = output0Data[(5 + k) * numAnchors + a];
 
-    proposals.push({ x1, y1, x2, y2, conf, coeffs });
+    proposals.push({ x1: cx - w/2, y1: cy - h/2, x2: cx + w/2, y2: cy + h/2, conf, coeffs });
   }
 
   if (proposals.length === 0) return [];
 
-  // ── Step 2: NMS ───────────────────────────────────────────────────────────
-  const kept = nms(proposals, IOU_THRESHOLD).slice(0, maxDetections);
+  const kept = nms(proposals, iouThreshold).slice(0, maxDetections);
 
-  // ── Step 3: decode masks + compute areas ─────────────────────────────────
-  // output1 is [1, 32, 256, 256] — drop the batch dimension
-  const protos = output1Data.subarray(0);
-
-  const results: RawDetection[] = [];
-
-  for (const p of kept) {
-    const mask = decodeMask(p.coeffs, protos);
-    const area = maskAreaInBBox(mask, p.x1, p.y1, p.x2, p.y2, origW, origH);
-
-    const { normalizedBounds, pxBounds } = modelBoxToBBox(
-      p.x1, p.y1, p.x2, p.y2,
-      scale, padX, padY,
-      origW, origH,
-    );
-
-    results.push({ normalizedBounds, pxBounds, area });
-  }
-
-  // Sort largest-first, matching server-side behaviour
-  return results.sort((a, b) => b.area - a.area);
-}
+  return kept
+    .map(p => {
+      const mask = decodeMask(p.coeffs, output1Data, protoSize, NUM_PROTOS);
+      const area = maskAreaInBBox(mask, p.x1, p.y1, p.x2, p.y2, origW, origH, inputSize, protoSize);
+      const { normalizedBounds, pxBounds } = modelBoxToBBox(
+        p.x1, p.y1, p.x2, p.y2, scale, padX, padY, origW, origH,
+      );
+      return { normalizedBounds, pxBounds, area };
+    })
+    .sort((a, b) => b.area - a.area);
+};
