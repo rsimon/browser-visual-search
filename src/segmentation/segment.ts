@@ -13,10 +13,17 @@ export const loadSegmenter = async (
   onProgress?: (status: ModelLoadStatus) => void,
 ): Promise<ort.InferenceSession> => {
   if (!segmenterSession) {
+    const startTime = performance.now();
+    console.log('[browser-visual-search] Loading segmenter');
+
     const modelBuffer = await loadModel(url, onProgress);
+    console.log(`[browser-visual-search] Done (${Math.round(performance.now() - startTime)} ms)`);
+    
+    console.log('[browser-visual-search] Creating session');
     segmenterSession  = await ort.InferenceSession.create(modelBuffer, {
       executionProviders: providers,
     });
+    console.log('[browser-visual-search] Session done');
   }
   return segmenterSession;
 };
@@ -40,9 +47,15 @@ export const segmentImage = async (
     maxDetections?: number;
   },
 ): Promise<Array<{ normalizedBounds: BBox; pxBounds: BBox; area: number }>> => {
+  console.log('[browser-visual-search] segmentImage');
+  console.log(options);
+
   const { segmenterUrl, executionProviders, maxDetections } = options;
 
   const config   = resolveConfig(segmenterUrl);
+  console.log('[browser-visual-search] resolved config');
+  console.log(config);
+
   const bitmap   = await createImageBitmap(file);
   const segmenter = await loadSegmenter(segmenterUrl, executionProviders);
 

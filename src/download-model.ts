@@ -78,6 +78,8 @@ export const loadModel = async (
   const root = await navigator.storage.getDirectory();
 
   const filename = getFilename(url);
+  console.log(`[browser-visual-search] Loading model: ${url}`);
+  console.log(`[browser-visual-search] Checking cache: ${filename}`);
 
   const handle = await root
     .getFileHandle(filename)

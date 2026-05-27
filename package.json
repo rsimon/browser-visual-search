@@ -1,6 +1,6 @@
 {
   "name": "browser-visual-search",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "In-browser visual search powered by FastSAM, CLIP and onnxruntime-web.",
   "type": "module",
   "sideEffects": false,
@@ -21,16 +21,16 @@
     "test": "vitest"
   },
   "peerDependencies": {
-    "onnxruntime-web": "^1.24.3"
+    "onnxruntime-web": "^1.26.0"
   },
   "devDependencies": {
-    "@vitest/browser": "^4.1.5",
-    "@vitest/browser-playwright": "^4.1.5",
-    "onnxruntime-web": "^1.24.3",
-    "playwright": "^1.59.1",
+    "@vitest/browser": "^4.1.7",
+    "@vitest/browser-playwright": "^4.1.7",
+    "onnxruntime-web": "^1.26.0",
+    "playwright": "^1.60.0",
     "typescript": "^6.0.3",
-    "vite-plugin-static-copy": "^4.0.1",
-    "vitest": "^4.1.5"
+    "vite-plugin-static-copy": "^4.1.0",
+    "vitest": "^4.1.7"
   },
   "keywords": [
     "visual-search",
