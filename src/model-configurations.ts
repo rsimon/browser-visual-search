@@ -16,3 +16,6 @@ export const MODEL_CONFIGURATIONS = {
 } as const satisfies Record<string, ModelConfig>;
 
 export type ModelName = keyof typeof MODEL_CONFIGURATIONS;
+
+export const getModelName = (url: string) => 
+    url.split('/').pop()?.replace(/\.onnx$/, '') ?? '';

@@ -1,4 +1,5 @@
 import { embedBatch, embedImage, loadEmbedder } from '../embedding/embed.js';
+import { getModelName } from '../model-configurations.js';
 import { loadSegmenter, segmentImage } from '../segmentation/segment.js';
 import type { 
   BBox, 
@@ -171,7 +172,14 @@ export const createIndex = (
       const jsonWriter = await jsonHandle.createWritable();
 
       const encoded = new TextEncoder().encode(
-        JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), images }, null, 2));
+        JSON.stringify({ 
+          models: {
+            segmenter: 'segmenterUrl' in opts ? getModelName(opts.segmenterUrl) : '',
+            embedder: getModelName(opts.embedderUrl),
+          }, 
+          updatedAt: new Date().toISOString(), 
+          images 
+        }, null, 2));
 
       await jsonWriter.write(encoded);
       await jsonWriter.close();

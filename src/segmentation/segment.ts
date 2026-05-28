@@ -3,7 +3,7 @@ import { loadModel } from '../download-model.js';
 import type { BBox, ModelLoadStatus } from '../types.js';
 import { letterboxToTensor } from './preprocess.js';
 import { decodeDetections } from './postprocess.js';
-import { MODEL_CONFIGURATIONS, ModelName } from '../model-configurations.js';
+import { getModelName, MODEL_CONFIGURATIONS, ModelName } from '../model-configurations.js';
 
 let segmenterSession: ort.InferenceSession | null = null;
 
@@ -22,7 +22,7 @@ export const loadSegmenter = async (
 };
 
 const resolveConfig = (segmenterUrl: string) => {
-  const modelName = segmenterUrl.split('/').pop()?.replace(/\.onnx$/, '') ?? '';
+  const modelName = getModelName(segmenterUrl);
   if (!(modelName in MODEL_CONFIGURATIONS)) {
     throw new Error(
       `No config found for model "${modelName}". ` +

@@ -93,7 +93,7 @@ export const loadModel = async (
     console.log(`[browser-visual-search] Cached: ${filename.substring(0, filename.indexOf('.'))}`);
     onProgress?.({ status: 'cached' });
 
-    if (file.size > 10000000) {
+    if (file.size > 100000) {
       const buffer = await file.arrayBuffer();
       onProgress?.({ status: 'download_complete' });
       return buffer;
