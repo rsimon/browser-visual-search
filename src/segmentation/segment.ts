@@ -5,21 +5,26 @@ import { letterboxToTensor } from './preprocess.js';
 import { decodeDetections } from './postprocess.js';
 import { getModelName, MODEL_CONFIGURATIONS, ModelName } from '../model-configurations.js';
 
-let segmenterSession: ort.InferenceSession | null = null;
+let segmenterSession: { modelUrl: string, session: ort.InferenceSession } | null = null;
 
 export const loadSegmenter = async (
   url: string,
   providers: string[] = ['webgpu', 'wasm'],
   onProgress?: (status: ModelLoadStatus) => void,
 ): Promise<ort.InferenceSession> => {
-  if (!segmenterSession) {
+  if (segmenterSession?.modelUrl !== url) {
+    segmenterSession?.session?.release();
+
     const modelBuffer = await loadModel(url, onProgress);
-    segmenterSession  = await ort.InferenceSession.create(modelBuffer, {
+    const session  = await ort.InferenceSession.create(modelBuffer, {
       executionProviders: providers,
     });
+
+    segmenterSession = { session, modelUrl: url };
   }
-  return segmenterSession;
-};
+
+  return segmenterSession?.session;
+}
 
 const resolveConfig = (segmenterUrl: string) => {
   const modelName = getModelName(segmenterUrl);
