@@ -419,6 +419,17 @@ let indexedFiles = {};
 const embedderUrl  = () => document.getElementById('embedderUrl').value.trim();
 const indexOpts    = () => ({ embedderUrl: embedderUrl(), executionProviders: ['webgpu', 'wasm'] });
 
+async function getFileByPath(dirHandle, relativePath) {
+  const parts = relativePath.split('/').filter(Boolean);
+  let current = dirHandle;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    current = await current.getDirectoryHandle(parts[i]);
+  }
+
+  return current.getFileHandle(parts[parts.length - 1]);
+}
+
 // ── DOM ───────────────────────────────────────────────────────────────────────
 const statusDot        = document.getElementById('statusDot');
 const btnLoad          = document.getElementById('btnLoad');
@@ -498,7 +509,7 @@ async function buildIndexedGrid() {
   for (const img of index.images) {
     let url = null;
     try {
-      const fh = await imageDir.getFileHandle(img.imageId);
+      const fh = await getFileByPath(imageDir, img.imageId);
       const file = await fh.getFile();
       url = URL.createObjectURL(file);
       indexedFiles[img.imageId] = url;
@@ -546,7 +557,7 @@ async function setQueryFromUrl(url, name) {
   // Try to get a real File from imageDir if this is an indexed image
   if (imageDir) {
     try {
-      const fh = await imageDir.getFileHandle(name);
+      const fh = await getFileByPath(imageDir, name);
       queryFile = await fh.getFile();
     } catch { /* not in indexed dir */ }
   }
