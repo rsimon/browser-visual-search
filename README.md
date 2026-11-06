@@ -4,6 +4,8 @@ In-browser visual search powered by FastSAM, CLIP, ONNX Runtime Web, and the Fil
 
 ![Screenshot of Browser Visual Search test interface](/screenshot.jpg "Screenshot of Browser Visual Search test interface")
 
+Build a searchable index of images in a folder, then find visually similar elements by querying with an image or a crop. Image processing and search run entirely in the browser.
+
 ## Quick start
 
 ```bash
@@ -53,6 +55,8 @@ The package is tested to work with the following ONNX models, available on [Hugg
 - CLIP embedder: <https://huggingface.co/aboutgeo/immarkus/resolve/main/clip-vit-b32-visual.onnx> (352 MB)
 
 You can also build and host your own models: see [scripts/README](./scripts/README.md) for instructions.
+
+Models are downloaded the first time they are needed and cached in the browser's origin-private file system (OPFS) for reuse on later visits, unless the browser clears that storage.
 
 ## Development
 
