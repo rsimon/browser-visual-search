@@ -77,6 +77,7 @@ const nearestNeighbours = (
       let score = 0;
       for (let k = 0; k < EMBEDDING_DIM; k++)
         score += query[k] * vec[k];
+      score = Math.max(-1, Math.min(1, score));
 
       results.push({ 
         imageId: img.imageId, 
