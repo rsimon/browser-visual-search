@@ -1,3 +1,4 @@
+.vitest/
 dist/
 node_modules/
 .visual-search/

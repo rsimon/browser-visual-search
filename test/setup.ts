@@ -1,5 +1,4 @@
 export const SEGMENTER_URL = '/models/fastsam-s.onnx';
-// export const SEGMENTER_URL = '/models/yolo8_shapes_only.onnx';
 export const EMBEDDER_URL  = '/models/clip-vit-b32-visual.onnx';
 
 export const FIXTURE_IMAGES = [

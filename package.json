@@ -1,7 +1,7 @@
 {
   "name": "browser-visual-search",
-  "version": "0.6.3",
-  "description": "In-browser visual search powered by FastSAM, CLIP and onnxruntime-web.",
+  "version": "1.0.0",
+  "description": "In-browser visual search powered by FastSAM, CLIP, onnxruntime-web and the File System API",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -24,20 +24,19 @@
     "onnxruntime-web": "^1.26.0"
   },
   "devDependencies": {
-    "@vitest/browser": "^4.1.7",
-    "@vitest/browser-playwright": "^4.1.7",
-    "onnxruntime-web": "^1.26.0",
-    "playwright": "^1.60.0",
-    "typescript": "^6.0.3",
-    "vite-plugin-static-copy": "^4.1.0",
-    "vitest": "^4.1.7"
+    "@vitest/browser": "^5.1.0",
+    "@vitest/browser-playwright": "^5.1.0",
+    "onnxruntime-web": "^1.31.1",
+    "playwright": "^1.65.0",
+    "typescript": "^7.0.2",
+    "vite-plugin-static-copy": "^4.1.1",
+    "vitest": "^5.1.0"
   },
   "keywords": [
     "visual-search",
     "clip",
     "fastsam",
     "onnx",
-    "browser",
     "image-segmentation",
     "embeddings"
   ],

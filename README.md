@@ -1,8 +1,6 @@
 # Browser Visual Search
 
-In-browser visual search powered by FastSAM, CLIP and onnxruntime-web.
-
-**Work in progress**
+In-browser visual search powered by FastSAM, CLIP, onnxruntime-web and the File System API.
 
 ## Installation
 ```bash
@@ -17,14 +15,14 @@ import { buildIndex, loadIndex } from 'browser-visual-search';
 const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
 
 const index = await buildIndex(dirHandle, {
-  segmenterUrl: '/models/fastsam-s.onnx',
-  embedderUrl:  '/models/clip-vit-b32-visual.onnx',
+  segmenterUrl: 'https://huggingface.co/aboutgeo/immarkus/resolve/main/fastsam-s.onnx',
+  embedderUrl:  'https://huggingface.co/aboutgeo/immarkus/resolve/main/clip-vit-b32-visual.onnx',
   onProgress: (p) => console.log(p),
 });
 
 // Load a previously built index
 const index = await loadIndex(dirHandle, {
-  embedderUrl: '/models/clip-vit-b32-visual.onnx',
+  embedderUrl: 'https://huggingface.co/aboutgeo/immarkus/resolve/main/clip-vit-b32-visual.onnx',
 });
 
 // Query by image or region
@@ -36,7 +34,9 @@ The index is persisted automatically to `.visual-search/` inside the chosen dire
 
 ## Models
 
-You need to build the ONNX models yourself – see [scripts/README](scripts) for instructions.
+ONNX models tested with this package are available on [HuggingFace](https://huggingface.co/aboutgeo/immarkus/tree/main). 
+
+You can also build models yourself: see [scripts/README](scripts) for instructions.
 
 ## Development
 
