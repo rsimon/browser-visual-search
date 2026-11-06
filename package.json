@@ -1,6 +1,6 @@
 {
   "name": "browser-visual-search",
-  "version": "1.0.0",
+  "version": "0.7.0",
   "description": "In-browser visual search powered by FastSAM, CLIP, onnxruntime-web and the File System API",
   "type": "module",
   "sideEffects": false,

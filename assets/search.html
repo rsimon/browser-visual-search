@@ -718,7 +718,7 @@ function renderResults(results) {
       <div class="result-meta">
         <div class="result-score">${(r.score * 100).toFixed(1)}<span style="font-size:11px;color:var(--muted)">%</span></div>
         <div class="result-id">${r.imageId}</div>
-        <div class="result-bbox">[${r.bbox.map(v => v.toFixed(2)).join(', ')}] &nbsp; area ${(r.area * 100).toFixed(1)}%</div>
+        <div class="result-bbox">[${r.normalizedBounds.map(v => v.toFixed(2)).join(', ')}] &nbsp; area ${(r.area * 100).toFixed(1)}%</div>
       </div>`;
 
     resultsList.appendChild(card);
@@ -734,7 +734,7 @@ function renderResults(results) {
       canvas.height = H;
       const c = canvas.getContext('2d');
       if (img?.naturalWidth) {
-        const [x, y, w, h] = r.bbox;
+        const [x, y, w, h] = r.normalizedBounds;
         c.drawImage(img, x * img.naturalWidth, y * img.naturalHeight, w * img.naturalWidth, h * img.naturalHeight, 0, 0, W, H);
       } else {
         c.fillStyle = '#1a1a1a';
