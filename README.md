@@ -2,6 +2,8 @@
 
 In-browser visual search powered by FastSAM, CLIP, ONNX Runtime Web, and the File System Access API.
 
+![Screenshot of Browser Visual Search test interface](/screenshot.jpg "Screenshot of Browser Visual Search test interface")
+
 ## Quick start
 
 ```bash
