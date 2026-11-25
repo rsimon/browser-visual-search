@@ -35,14 +35,15 @@ export interface BuildIndexOptions extends LoadIndexOptions {
 
 }
 
+interface IndexModels {
+  embedder: string;
+  segmenter: string;
+}
+
 interface VisualSearchIndexData {
-  
-  model: string;
-
-  updated: string;
-
+  models: IndexModels;
+  updatedAt: string;
   images: IndexedImage[];
-
 }
 
 const getDirectoryHandle = async (
@@ -114,7 +115,11 @@ export const createIndex = (
   images: IndexedImage[],
   embeddings: Float32Array[],
   dirHandle: FileSystemDirectoryHandle,
-  opts: LoadIndexOptions | BuildIndexOptions
+  opts: LoadIndexOptions | BuildIndexOptions,
+  models: IndexModels = {
+    segmenter: 'segmenterUrl' in opts ? getModelName(opts.segmenterUrl) : '',
+    embedder: getModelName(opts.embedderUrl),
+  }
 ): VisualSearchIndex => {
   const imageMap = new Map(images.map(img => [img.imageId, img]));
 
@@ -174,10 +179,7 @@ export const createIndex = (
 
       const encoded = new TextEncoder().encode(
         JSON.stringify({ 
-          models: {
-            segmenter: 'segmenterUrl' in opts ? getModelName(opts.segmenterUrl) : '',
-            embedder: getModelName(opts.embedderUrl),
-          }, 
+          models,
           updatedAt: new Date().toISOString(), 
           images 
         }, null, 2));
@@ -228,7 +230,18 @@ export const openIndex = async (
   const jsonHandle = await vsDir.getFileHandle(INDEX_FILE);
   const jsonFile   = await jsonHandle.getFile();
   const jsonText   = await jsonFile.text();
-  const { images }  = JSON.parse(jsonText) as VisualSearchIndexData;
+  const { images, models } = JSON.parse(jsonText) as VisualSearchIndexData;
+
+  // Older or incomplete manifests cannot establish which models produced the vectors.
+  if (!models || typeof models.embedder !== 'string' || !models.embedder ||
+      typeof models.segmenter !== 'string')
+    throw new Error('Index model metadata is missing or invalid. Rebuild the index before opening it.');
+
+  if (models.embedder !== getModelName(opts.embedderUrl))
+    throw new Error('Index embedder model mismatch. Open with the original model or rebuild the index.');
+
+  if ('segmenterUrl' in opts && (!models.segmenter || models.segmenter !== getModelName(opts.segmenterUrl)))
+    throw new Error('Index segmenter model mismatch. Open with the original model or rebuild the index.');
 
   const binHandle  = await vsDir.getFileHandle(EMBED_FILE);
   const binFile    = await binHandle.getFile();
@@ -245,5 +258,6 @@ export const openIndex = async (
     (_, i) => flattened.slice(i * EMBEDDING_DIM, (i + 1) * EMBEDDING_DIM)
   );
 
-  return createIndex(images, embeddings, dirHandle, opts);
+  // Preserve the stored segmenter even when the caller only needs querying.
+  return createIndex(images, embeddings, dirHandle, opts, models);
 }

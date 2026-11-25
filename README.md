@@ -82,3 +82,19 @@ Browser tests run in Playwright and expect model files under `/assets/models/`.
 - `buildFromDirectory` is incremental for new or missing images.
 - `openIndex` expects the directory to already contain a valid `.visual-search` index.
 - If you want to rebuild from scratch, remove the `.visual-search/` directory or use a fresh directory handle.
+
+### Saved-index model compatibility
+
+`openIndex` checks the saved embedder model name against `embedderUrl`. If
+`segmenterUrl` is supplied (to add images), its model name must also match.
+A mismatch throws before changing any saved files; `create: true` does not
+replace an incompatible existing index. Use the original models or rebuild
+in a separate directory with the intended models.
+
+Model names keep the existing filename-without-`.onnx` convention; this is not
+a content hash or a check that two URLs serve identical model weights. An
+index with missing or invalid model metadata must be rebuilt rather than
+silently assuming compatibility. Query-only opens do not require a segmenter
+URL and preserve its saved metadata on subsequent saves. An explicitly empty
+saved segmenter name allows querying, but cannot establish compatibility for
+adding images with a segmenter.
